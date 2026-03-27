@@ -1,0 +1,287 @@
+{
+  "info": {
+    "_postman_id": "b96cb2bb-f496-47f5-a50c-2f4186edf688",
+    "name": "Vilaire Valcin Backend - User APIs",
+    "description": "Postman collection for active user/auth APIs in this backend.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "User Auth",
+      "item": [
+        {
+          "name": "Register",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "firstName", "value": "John", "type": "text" },
+                { "key": "lastName", "value": "Doe", "type": "text" },
+                { "key": "email", "value": "john@example.com", "type": "text" },
+                { "key": "password", "value": "Password@123", "type": "text" },
+                { "key": "confirmPassword", "value": "Password@123", "type": "text" },
+                { "key": "phone", "value": "+1234567890", "type": "text" },
+                { "key": "address", "value": "New York", "type": "text" },
+                { "key": "avatar", "type": "file", "src": "" }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/user/auth/register",
+              "host": ["{{baseUrl}}"],
+              "path": ["user", "auth", "register"]
+            },
+            "description": "Signup user (multipart/form-data)."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201/200', function () {",
+                  "  pm.expect([200, 201]).to.include(pm.response.code);",
+                  "});",
+                  "let data = {};",
+                  "try { data = pm.response.json(); } catch (e) {}",
+                  "if (data && data.accessToken) pm.collectionVariables.set('accessToken', data.accessToken);",
+                  "if (data && data.refreshToken) pm.collectionVariables.set('refreshToken', data.refreshToken);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"john@example.com\",\n  \"password\": \"Password@123\",\n  \"fcmToken\": \"\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/user/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["user", "auth", "login"]
+            },
+            "description": "Login user with email/password."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "let data = {};",
+                  "try { data = pm.response.json(); } catch (e) {}",
+                  "if (data && data.accessToken) pm.collectionVariables.set('accessToken', data.accessToken);",
+                  "if (data && data.refreshToken) pm.collectionVariables.set('refreshToken', data.refreshToken);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Refresh Token",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/user/auth/refresh",
+              "host": ["{{baseUrl}}"],
+              "path": ["user", "auth", "refresh"]
+            },
+            "description": "Get new access/refresh tokens."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "let data = {};",
+                  "try { data = pm.response.json(); } catch (e) {}",
+                  "if (data && data.data && data.data.accessToken) pm.collectionVariables.set('accessToken', data.data.accessToken);",
+                  "if (data && data.data && data.data.refreshToken) pm.collectionVariables.set('refreshToken', data.data.refreshToken);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Logout",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/user/auth/logout",
+              "host": ["{{baseUrl}}"],
+              "path": ["user", "auth", "logout"]
+            },
+            "description": "Logout user and invalidate refresh token."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Forgot Password",
+      "item": [
+        {
+          "name": "FP 1 - Forgot Password",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"john@example.com\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/password/forgot",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "password", "forgot"]
+            }
+          }
+        },
+        {
+          "name": "FP 2 - Verify Reset Code",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"john@example.com\",\n  \"token\": \"1234\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/password/verify-code",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "password", "verify-code"]
+            }
+          }
+        },
+        {
+          "name": "FP 3 - Reset Password",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"john@example.com\",\n  \"token\": \"1234\",\n  \"password\": \"NewPassword@123\",\n  \"passwordConfirmation\": \"NewPassword@123\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/password/reset",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "password", "reset"]
+            }
+          }
+        },
+        {
+          "name": "Resend Reset Code",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"john@example.com\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/password/resend-code",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "password", "resend-code"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "User Profile",
+      "item": [
+        {
+          "name": "Get Profile",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/user/profile",
+              "host": ["{{baseUrl}}"],
+              "path": ["user", "profile"]
+            }
+          }
+        },
+        {
+          "name": "Edit Profile (with optional avatar/crop upload)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "firstName", "value": "John", "type": "text" },
+                { "key": "lastName", "value": "Doe", "type": "text" },
+                { "key": "email", "value": "john@example.com", "type": "text" },
+                { "key": "phone", "value": "+1234567890", "type": "text" },
+                { "key": "address", "value": "Updated Address", "type": "text" },
+                { "key": "avatar", "type": "file", "src": "" }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/user/profile",
+              "host": ["{{baseUrl}}"],
+              "path": ["user", "profile"]
+            }
+          }
+        },
+        {
+          "name": "Change Password",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"oldPassword\": \"Password@123\",\n  \"newPassword\": \"NewPassword@123\",\n  \"confirmNewPassword\": \"NewPassword@123\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/user/change-password",
+              "host": ["{{baseUrl}}"],
+              "path": ["user", "change-password"]
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000/api/v1"
+    },
+    {
+      "key": "accessToken",
+      "value": ""
+    },
+    {
+      "key": "refreshToken",
+      "value": ""
+    }
+  ]
+}
