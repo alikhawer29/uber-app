@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException, NotFoundException, InternalServerErrorException } from '@nestjs/common';
+import { Injectable, BadRequestException, NotFoundException, InternalServerErrorException, HttpException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcryptjs';
 import { UserRepository } from 'src/shared/repositories/user.repository';
@@ -178,10 +178,10 @@ export class PasswordResetService {
             };
 
         } catch (error) {
-            if (error instanceof BadRequestException) {
-                console.log("error", error);
+            // Preserve intended HTTP errors (400/404/etc.) instead of converting to 500.
+            if (error instanceof HttpException) {
+                throw error;
             }
-            console.log("error", error);
             throw new InternalServerErrorException('Failed to reset password');
         }
     }

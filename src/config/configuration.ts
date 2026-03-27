@@ -1,5 +1,5 @@
 export default () => {
-    const appName = process.env.APP_NAME || 'File Management App';
+    const appName = process.env.APP_NAME || 'Vilaire Valcin';
 
     // Resolve email "from" name:
     // - Prefer MAIL_FROM_NAME when it's set and not literally '${APP_NAME}'
@@ -8,7 +8,7 @@ export default () => {
     const resolvedFromName =
         mailFromNameEnv && mailFromNameEnv !== '${APP_NAME}'
             ? mailFromNameEnv
-            : appName || 'Cms Plumber';
+            : appName || 'Vilaire Valcin';
 
     return ({
         app: {

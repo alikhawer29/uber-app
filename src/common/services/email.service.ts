@@ -19,11 +19,15 @@ export class EmailService {
         this.initializeTransporter();
     }
 
-    private async initializeTransporter() {
-        // Resolve app name (prefer Nest config, then APP_NAME env)
+    private resolveAppName(): string {
         const appNameFromConfig = this.configService.get<string>('app.name');
         const appNameEnv = process.env.APP_NAME;
-        const resolvedAppName = appNameFromConfig || appNameEnv || 'Cms Plumber';
+        return appNameFromConfig || appNameEnv || 'Vilaire Valcin';
+    }
+
+    private async initializeTransporter() {
+        // Resolve app name (prefer Nest config, then APP_NAME env)
+        const resolvedAppName = this.resolveAppName();
 
         // Use the same environment variable names as Laravel
         const mailConfig = {
@@ -185,9 +189,7 @@ export class EmailService {
             return false;
         }
 
-        const appNameFromConfig = this.configService.get<string>('app.name');
-        const appNameEnv = process.env.APP_NAME;
-        const resolvedAppName = appNameFromConfig || appNameEnv || 'Cms Plumber';
+        const resolvedAppName = this.resolveAppName();
 
         const fromAddress = process.env.MAIL_FROM_ADDRESS || process.env.EMAIL_FROM;
         const fromName = (
@@ -239,7 +241,7 @@ export class EmailService {
             return false;
         }
 
-        const appName = process.env.MAIL_FROM_NAME || 'Cms Plumber';
+        const appName = this.resolveAppName();
         const subject = `Password Reset Code - ${appName}`;
 
         const html = `
@@ -317,7 +319,7 @@ If you didn't request this password reset, please ignore this email.
             return false;
         }
 
-        const appName = process.env.MAIL_FROM_NAME || 'Cms Plumber';
+        const appName = this.resolveAppName();
         const subject = `Password Reset Successful - ${appName}`;
 
         const html = `
