@@ -33,6 +33,7 @@ export type UserDocument = User & Document;
             // Remove sensitive fields
             delete transformedRet.password;
             delete transformedRet.refreshToken;
+            delete transformedRet.tokenInvalidBefore;
             delete transformedRet.__v;
 
             return transformedRet;
@@ -74,6 +75,9 @@ export class User {
 
     @Prop({ type: String, select: false })
     refreshToken?: string;
+
+    @Prop({ type: Date, select: false })
+    tokenInvalidBefore?: Date;
 
     @Prop({ type: String })
     phone?: string;
@@ -159,7 +163,6 @@ UserSchema.virtual('fullName').get(function () {
 });
 
 // Indexes
-UserSchema.index({ email: 1 }, { unique: true });
 UserSchema.index({ role: 1 });
 UserSchema.index({ status: 1 });
 UserSchema.index({ createdAt: -1 });

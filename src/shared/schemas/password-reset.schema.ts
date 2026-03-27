@@ -33,4 +33,3 @@ export class PasswordReset {
 export const PasswordResetSchema = SchemaFactory.createForClass(PasswordReset);
 
 PasswordResetSchema.index({ email: 1, token: 1 });
-PasswordResetSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });

@@ -119,12 +119,12 @@ export class UserAuthService {
     }
 
     async logout(userId: string) {
-        // Update refresh token to null
-        await this.userRepository.updateRefreshToken(userId, null);
-
-        // Remove all FCM tokens automatically on logout
-        // This ensures no push notifications are sent to any of the user's devices after logout
-        await this.userRepository.clearAllFcmTokens(userId);
+        // Invalidate refresh token and all previously issued access tokens.
+        await this.userRepository.update(userId, {
+            refreshToken: null,
+            fcmTokens: [],
+            tokenInvalidBefore: new Date(),
+        });
 
         return { message: 'Logout successful' };
     }
@@ -161,13 +161,14 @@ export class UserAuthService {
     }
 
     private async generateTokens(userId: string, email: string, role: string) {
+        const tokenIssuedAt = Date.now();
         const [accessToken, refreshToken] = await Promise.all([
             this.jwtService.signAsync(
-                { sub: userId, email, role },
+                { sub: userId, email, role, tokenIssuedAt },
                 { secret: this.configService.get('jwt.secret'), expiresIn: this.configService.get('jwt.expiresIn') },
             ),
             this.jwtService.signAsync(
-                { sub: userId, email, role },
+                { sub: userId, email, role, tokenIssuedAt },
                 { secret: this.configService.get('jwt.refreshSecret'), expiresIn: this.configService.get('jwt.refreshExpiresIn') },
             ),
         ]);

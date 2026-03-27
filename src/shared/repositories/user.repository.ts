@@ -42,6 +42,13 @@ export class UserRepository extends BaseRepository<UserDocument> {
             .exec();
     }
 
+    async findByIdForAuth(id: string): Promise<UserDocument | null> {
+        return this.userModel
+            .findById(id)
+            .select('+tokenInvalidBefore')
+            .exec();
+    }
+
     async findByIdWithGoogleCalendarToken(id: string): Promise<UserDocument | null> {
         return this.userModel
             .findById(id)
