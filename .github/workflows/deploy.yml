@@ -1,0 +1,48 @@
+name: Deploy Backend - Vilaire Valcin
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT }}
+          timeout: 60s
+          command_timeout: 120s
+          script: |
+            set -e
+
+            cd public_html/vilaire-valcin-backend
+
+            # Load nvm and use Node 20
+            export NVM_DIR="$HOME/.nvm"
+            [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+            nvm use 20 || echo "nvm not found, using system Node"
+
+            # Pull latest code
+            git fetch https://${{ secrets.GIT_TOKEN }}@github.com/MetaFrolicLabs-MFL/vilaire-valcin-backend.git main
+            git reset --hard FETCH_HEAD
+
+            # Install and build
+            npm install
+            npm run build
+
+            # Restart PM2 process
+            pm2 restart vilaire-valcin-backend-8859 || pm2 start dist/main.js --name vilaire-valcin-backend-8859
+            pm2 save
+
+            echo "✅ Deployed at $(date)"
+            pm2 list
