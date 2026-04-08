@@ -12,6 +12,8 @@ import { VehicleType, VehicleTypeSchema } from './schemas/vehicle-type.schema';
 import { Fare, FareSchema } from './schemas/fare.schema';
 import { VehicleTypeRepository } from './repositories/vehicle-type.repository';
 import { FareRepository } from './repositories/fare.repository';
+import { SavedPlace, SavedPlaceSchema } from './schemas/saved-place.schema';
+import { SavedPlaceRepository } from './repositories/saved-place.repository';
 
 @Module({
     imports: [
@@ -22,6 +24,7 @@ import { FareRepository } from './repositories/fare.repository';
             { name: PasswordReset.name, schema: PasswordResetSchema },
             { name: VehicleType.name, schema: VehicleTypeSchema },
             { name: Fare.name, schema: FareSchema },
+            { name: SavedPlace.name, schema: SavedPlaceSchema },
         ]),
     ],
     providers: [
@@ -31,6 +34,7 @@ import { FareRepository } from './repositories/fare.repository';
         PasswordResetRepository,
         VehicleTypeRepository,
         FareRepository,
+        SavedPlaceRepository,
     ],
     exports: [
         MongooseModule,
@@ -40,6 +44,7 @@ import { FareRepository } from './repositories/fare.repository';
         PasswordResetRepository,
         VehicleTypeRepository,
         FareRepository,
+        SavedPlaceRepository,
     ],
 })
 export class SharedModule { }
