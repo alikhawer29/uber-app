@@ -35,5 +35,13 @@ export class SavedPlace {
 
 export const SavedPlaceSchema = SchemaFactory.createForClass(SavedPlace);
 
+SavedPlaceSchema.set('toJSON', {
+    virtuals: true,
+    transform: (_doc, ret: any) => {
+        delete ret.__v;
+        return ret;
+    },
+});
+
 SavedPlaceSchema.index({ userId: 1, isActive: 1, sortOrder: 1 });
 SavedPlaceSchema.index({ userId: 1, googlePlaceId: 1 }, { unique: true, sparse: true });

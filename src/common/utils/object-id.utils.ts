@@ -9,30 +9,47 @@ export class ObjectIdUtils {
         }
 
         if (Array.isArray(obj)) {
-            return obj.map(item => this.convertObjectIdsToStrings(item));
+            return obj.map((item) => this.convertObjectIdsToStrings(item));
         }
 
         if (typeof obj === 'object') {
-            // If object has toJSON method (like Mongoose documents), call it first
+            if (this.isBsonObjectId(obj)) {
+                return obj.toString();
+            }
+
             if (typeof obj.toJSON === 'function') {
                 obj = obj.toJSON();
             }
 
-            // Check if it's a MongoDB ObjectId
-            if (obj._id && typeof obj._id === 'object' && obj._id.toString) {
+            // ObjectId.toJSON() returns a string; iterating a string with for-in produced bogus { "0":"6", ... } keys.
+            if (obj === null || typeof obj !== 'object') {
+                return obj;
+            }
+
+            if (Array.isArray(obj)) {
+                return obj.map((item) => this.convertObjectIdsToStrings(item));
+            }
+
+            if (obj._id && typeof obj._id === 'object' && typeof obj._id.toString === 'function') {
                 obj._id = obj._id.toString();
             }
 
-            // Convert all properties
-            const result: any = {};
-            for (const key in obj) {
-                if (Object.prototype.hasOwnProperty.call(obj, key)) {
-                    result[key] = this.convertObjectIdsToStrings(obj[key]);
-                }
+            const result: Record<string, any> = {};
+            for (const key of Object.keys(obj)) {
+                result[key] = this.convertObjectIdsToStrings(obj[key]);
             }
             return result;
         }
 
         return obj;
+    }
+
+    private static isBsonObjectId(val: any): boolean {
+        return (
+            val != null &&
+            typeof val === 'object' &&
+            typeof val.toString === 'function' &&
+            (val._bsontype === 'ObjectId' || val.constructor?.name === 'ObjectId')
+        );
     }
 }
