@@ -28,6 +28,6 @@ import { CommonModule } from 'src/common/common.module';
         UserAuthController,
         UserController
     ],
-    exports: [],
+    exports: [UserAuthService],
 })
 export class UserModule { }

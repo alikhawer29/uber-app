@@ -65,8 +65,7 @@ export class UserAuthService {
             await this.userRepository.update(user._id.toString(), { avatar: savedFile.path });
         }
 
-        const tokens = await this.generateTokens(user._id.toString(), user.email, user.role);
-        await this.userRepository.updateRefreshToken(user._id.toString(), tokens.refreshToken);
+        const tokens = await this.establishSession(user._id.toString(), user.email, user.role);
 
         await this.notificationService.notifyNewUserRegistration({
             id: user._id.toString(),
@@ -107,9 +106,7 @@ export class UserAuthService {
             await this.userRepository.addFcmToken(user._id.toString(), fcmToken.trim());
         }
 
-        // Generate tokens
-        const tokens = await this.generateTokens(user._id.toString(), user.email, user.role);
-        await this.userRepository.updateRefreshToken(user._id.toString(), tokens.refreshToken);
+        const tokens = await this.establishSession(user._id.toString(), user.email, user.role);
         const updatedUser = await this.userRepository.findByEmailWithAvatar(email);
 
         return {
@@ -153,10 +150,15 @@ export class UserAuthService {
             throw new UnauthorizedException('Refresh token mismatch');
         }
 
-        // Generate new tokens
-        const tokens = await this.generateTokens(user._id.toString(), user.email, user.role);
-        await this.userRepository.updateRefreshToken(user._id.toString(), tokens.refreshToken);
+        const tokens = await this.establishSession(user._id.toString(), user.email, user.role);
 
+        return tokens;
+    }
+
+    /** Issue access + refresh tokens and persist refresh token (shared with admin auth). */
+    async establishSession(userId: string, email: string, role: string) {
+        const tokens = await this.generateTokens(userId, email, role);
+        await this.userRepository.updateRefreshToken(userId, tokens.refreshToken);
         return tokens;
     }
 

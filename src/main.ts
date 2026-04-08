@@ -78,12 +78,12 @@ async function bootstrap() {
 
   if (isProduction) {
     // SSL Certificate paths - using your existing certificates for production
-    const sslBase = '/home/customdevnewonli/public_html/ssl';
+    const sslBase = '/home/dashboardcmsplum/public_html/cms-plumber-backend/ssl';
     try {
       httpsOptions = {
-        key: readFileSync(`${sslBase}/customdevnewonli.key`),
-        cert: readFileSync(`${sslBase}/customdevnewonli.crt`),
-        ca: readFileSync(`${sslBase}/customdevnewonli.ca`),
+        key: readFileSync(`${sslBase}/dashboardcmsplumbers.key`),
+        cert: readFileSync(`${sslBase}/dashboardcmsplumbers.crt`),
+        ca: readFileSync(`${sslBase}/dashboardcmsplumbers.ca`),
       };
       console.log('🔒 HTTPS enabled for production environment');
     } catch (error) {

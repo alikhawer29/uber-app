@@ -31,6 +31,6 @@ import { SharedModule } from 'src/shared/shared.module';
     controllers: [
         PasswordResetController
     ],
-    exports: [JwtModule],
+    exports: [JwtModule, PasswordResetService],
 })
 export class AuthModule { }

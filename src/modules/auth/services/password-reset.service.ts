@@ -9,6 +9,10 @@ import { ForgotPasswordDto } from '../dto/forgot-password.dto';
 import { VerifyResetCodeDto } from '../dto/verify-reset-code.dto';
 import { ResetPasswordDto } from '../dto/reset-password.dto';
 import { NotificationType } from 'src/shared/schemas/notification.schema';
+import { UserRole } from 'src/common/constants/user.constants';
+import { UserDocument } from 'src/shared/schemas/user.schema';
+
+export type PasswordResetAudience = { allowedRoles?: UserRole[] };
 
 @Injectable()
 export class PasswordResetService {
@@ -20,7 +24,7 @@ export class PasswordResetService {
         private readonly configService: ConfigService,
     ) { }
 
-    async initiatePasswordReset(forgotPasswordDto: ForgotPasswordDto) {
+    async initiatePasswordReset(forgotPasswordDto: ForgotPasswordDto, audience?: PasswordResetAudience) {
         const { email } = forgotPasswordDto;
 
         // Validate email format
@@ -30,7 +34,7 @@ export class PasswordResetService {
 
         // Check if user exists
         const user = await this.userRepository.findByEmail(email);
-        if (!user) {
+        if (!user || !this.userMatchesAudience(user, audience)) {
             // Don't reveal if user exists or not for security
             return {
                 message: 'If the email exists, a reset code has been sent.'
@@ -89,7 +93,7 @@ export class PasswordResetService {
         }
     }
 
-    async verifyResetCode(verifyResetCodeDto: VerifyResetCodeDto) {
+    async verifyResetCode(verifyResetCodeDto: VerifyResetCodeDto, audience?: PasswordResetAudience) {
         const { email, token } = verifyResetCodeDto;
 
         // Validate inputs
@@ -103,7 +107,7 @@ export class PasswordResetService {
 
         // Check if user exists
         const user = await this.userRepository.findByEmail(email);
-        if (!user) {
+        if (!user || !this.userMatchesAudience(user, audience)) {
             throw new NotFoundException('User not found');
         }
 
@@ -121,7 +125,7 @@ export class PasswordResetService {
         };
     }
 
-    async resetPassword(resetPasswordDto: ResetPasswordDto) {
+    async resetPassword(resetPasswordDto: ResetPasswordDto, audience?: PasswordResetAudience) {
         const { email, token, password, passwordConfirmation } = resetPasswordDto;
         if (!email || !this.isValidEmail(email)) {
             throw new BadRequestException('Please provide a valid email address');
@@ -141,7 +145,7 @@ export class PasswordResetService {
             );
         }
         const user = await this.userRepository.findByEmailWithPassword(email);
-        if (!user) {
+        if (!user || !this.userMatchesAudience(user, audience)) {
             throw new NotFoundException('User not found');
         }
         if (user.status !== 'active') {
@@ -186,7 +190,7 @@ export class PasswordResetService {
         }
     }
 
-    async resendResetCode(email: string) {
+    async resendResetCode(email: string, audience?: PasswordResetAudience) {
         // Validate email
         if (!email || !this.isValidEmail(email)) {
             throw new BadRequestException('Please provide a valid email address');
@@ -194,7 +198,7 @@ export class PasswordResetService {
 
         // Check if user exists
         const user = await this.userRepository.findByEmail(email);
-        if (!user) {
+        if (!user || !this.userMatchesAudience(user, audience)) {
             // Don't reveal if user exists or not for security
             return {
                 message: 'If the email exists, a new reset code has been sent.'
@@ -251,6 +255,15 @@ export class PasswordResetService {
             }
             throw new InternalServerErrorException('Failed to resend reset code');
         }
+    }
+
+    private userMatchesAudience(user: UserDocument, audience?: PasswordResetAudience): boolean {
+        const roles = audience?.allowedRoles;
+        if (!roles?.length) {
+            return true;
+        }
+        const r = String(user.role);
+        return roles.some((allowed) => String(allowed) === r);
     }
 
     private generateResetToken(): string {

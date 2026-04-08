@@ -8,6 +8,10 @@ import { Notification, NotificationSchema } from './schemas/notification.schema'
 import { NotificationRepository } from './repositories/notification.repository';
 import { PasswordReset, PasswordResetSchema } from './schemas/password-reset.schema';
 import { PasswordResetRepository } from './repositories/password-reset.repository';
+import { VehicleType, VehicleTypeSchema } from './schemas/vehicle-type.schema';
+import { Fare, FareSchema } from './schemas/fare.schema';
+import { VehicleTypeRepository } from './repositories/vehicle-type.repository';
+import { FareRepository } from './repositories/fare.repository';
 
 @Module({
     imports: [
@@ -16,9 +20,26 @@ import { PasswordResetRepository } from './repositories/password-reset.repositor
             { name: File.name, schema: FileSchema },
             { name: Notification.name, schema: NotificationSchema },
             { name: PasswordReset.name, schema: PasswordResetSchema },
+            { name: VehicleType.name, schema: VehicleTypeSchema },
+            { name: Fare.name, schema: FareSchema },
         ]),
     ],
-    providers: [UserRepository, FileRepository, NotificationRepository, PasswordResetRepository],
-    exports: [MongooseModule, UserRepository, FileRepository, NotificationRepository, PasswordResetRepository],
+    providers: [
+        UserRepository,
+        FileRepository,
+        NotificationRepository,
+        PasswordResetRepository,
+        VehicleTypeRepository,
+        FareRepository,
+    ],
+    exports: [
+        MongooseModule,
+        UserRepository,
+        FileRepository,
+        NotificationRepository,
+        PasswordResetRepository,
+        VehicleTypeRepository,
+        FareRepository,
+    ],
 })
 export class SharedModule { }
