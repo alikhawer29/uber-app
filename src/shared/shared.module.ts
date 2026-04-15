@@ -14,6 +14,13 @@ import { VehicleTypeRepository } from './repositories/vehicle-type.repository';
 import { FareRepository } from './repositories/fare.repository';
 import { SavedPlace, SavedPlaceSchema } from './schemas/saved-place.schema';
 import { SavedPlaceRepository } from './repositories/saved-place.repository';
+import { RiderVehicle, RiderVehicleSchema } from './schemas/rider-vehicle.schema';
+import { RiderVehicleRepository } from './repositories/rider-vehicle.repository';
+import {
+    RiderVehicleUpdateRequest,
+    RiderVehicleUpdateRequestSchema,
+} from './schemas/rider-vehicle-update-request.schema';
+import { RiderVehicleUpdateRequestRepository } from './repositories/rider-vehicle-update-request.repository';
 
 @Module({
     imports: [
@@ -25,6 +32,8 @@ import { SavedPlaceRepository } from './repositories/saved-place.repository';
             { name: VehicleType.name, schema: VehicleTypeSchema },
             { name: Fare.name, schema: FareSchema },
             { name: SavedPlace.name, schema: SavedPlaceSchema },
+            { name: RiderVehicle.name, schema: RiderVehicleSchema },
+            { name: RiderVehicleUpdateRequest.name, schema: RiderVehicleUpdateRequestSchema },
         ]),
     ],
     providers: [
@@ -35,6 +44,8 @@ import { SavedPlaceRepository } from './repositories/saved-place.repository';
         VehicleTypeRepository,
         FareRepository,
         SavedPlaceRepository,
+        RiderVehicleRepository,
+        RiderVehicleUpdateRequestRepository,
     ],
     exports: [
         MongooseModule,
@@ -45,6 +56,8 @@ import { SavedPlaceRepository } from './repositories/saved-place.repository';
         VehicleTypeRepository,
         FareRepository,
         SavedPlaceRepository,
+        RiderVehicleRepository,
+        RiderVehicleUpdateRequestRepository,
     ],
 })
 export class SharedModule { }

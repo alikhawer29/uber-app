@@ -8,6 +8,7 @@ import { join } from 'path';
 import configuration from './config/configuration';
 import { CommonModule } from './common/common.module';
 import { AdminModule } from './modules/admin/admin.module';
+import { RiderModule } from './modules/rider/rider.module';
 import { SharedModule } from './shared/shared.module';
 
 @Module({
@@ -31,6 +32,7 @@ import { SharedModule } from './shared/shared.module';
     ScheduleModule.forRoot(),
     CommonModule,
     SharedModule,
+    RiderModule,
     AdminModule,
   ],
 })

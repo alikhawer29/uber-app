@@ -217,4 +217,14 @@ export class FileRepository extends BaseRepository<FileDocument> {
             })
             .exec();
     }
+
+    /** Removes DB rows and disk files for stored `path` values (e.g. multer filenames). */
+    async hardDeleteByStoredPaths(paths: string[]): Promise<void> {
+        const unique = [...new Set(paths.filter(Boolean))];
+        if (unique.length === 0) return;
+        const filesToDelete = await this.fileModel.find({ path: { $in: unique } }).exec();
+        if (filesToDelete.length === 0) return;
+        await this.deleteFilesFromDisk(filesToDelete);
+        await this.fileModel.deleteMany({ path: { $in: unique } });
+    }
 }

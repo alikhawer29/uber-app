@@ -97,6 +97,10 @@ export class User {
     @Prop({ type: Date })
     deletedAt?: Date;
 
+    /** Set when admin rejects a rider application (optional context for the rider). */
+    @Prop({ type: String, trim: true, maxlength: 2000 })
+    applicationRejectionReason?: string;
+
     // ===== Google Calendar (per-admin) =====
 
     @Prop({ type: String, select: false })
@@ -165,5 +169,6 @@ UserSchema.virtual('fullName').get(function () {
 // Indexes
 UserSchema.index({ role: 1 });
 UserSchema.index({ status: 1 });
+UserSchema.index({ role: 1, status: 1 });
 UserSchema.index({ createdAt: -1 });
 UserSchema.index({ deletedAt: 1 });

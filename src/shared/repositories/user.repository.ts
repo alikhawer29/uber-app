@@ -1,8 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types } from 'mongoose';
+import { FilterQuery, Model, Types } from 'mongoose';
 import { BaseRepository } from './base.repository';
 import { User, UserDocument } from '../schemas/user.schema';
+import { UserRole, UserStatus } from '../../common/constants/user.constants';
 import { SearchUtils } from '../../common/utils/search.utils';
 
 @Injectable()
@@ -377,5 +378,164 @@ export class UserRepository extends BaseRepository<UserDocument> {
                 { new: true }
             )
             .exec();
+    }
+
+    async paginateByRoleAndStatus(
+        page: number,
+        limit: number,
+        role: string,
+        status: string,
+    ): Promise<{
+        data: UserDocument[];
+        total: number;
+        page: number;
+        limit: number;
+        totalPages: number;
+        hasNext: boolean;
+        hasPrev: boolean;
+    }> {
+        return this.paginate(page, limit, { role, status }, {
+            sort: { createdAt: -1 },
+            select: '-password -refreshToken -tokenInvalidBefore',
+        });
+    }
+
+    /** Riders approved for the platform (active or inactive), excluding pending / rejected. */
+    async paginateApprovedRiders(
+        page: number,
+        limit: number,
+        search?: string,
+        statusFilter: 'all' | 'active' | 'inactive' = 'all',
+    ): Promise<{
+        data: UserDocument[];
+        total: number;
+        page: number;
+        limit: number;
+        totalPages: number;
+        hasNext: boolean;
+        hasPrev: boolean;
+    }> {
+        const conditions: FilterQuery<UserDocument> = {
+            role: UserRole.RIDER,
+            status: { $in: [UserStatus.ACTIVE, UserStatus.INACTIVE] },
+        };
+        if (statusFilter === 'active') {
+            conditions.status = UserStatus.ACTIVE;
+        } else if (statusFilter === 'inactive') {
+            conditions.status = UserStatus.INACTIVE;
+        }
+        const q = search?.trim();
+        if (q) {
+            const safe = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            conditions.$or = [
+                { email: { $regex: safe, $options: 'i' } },
+                { firstName: { $regex: safe, $options: 'i' } },
+                { lastName: { $regex: safe, $options: 'i' } },
+            ];
+        }
+        return this.paginate(page, limit, conditions, {
+            sort: { createdAt: -1 },
+            select: '-password -refreshToken -tokenInvalidBefore',
+        });
+    }
+
+    /** Rider driver registration queue: pending, rejected, or approved (active/inactive). Excludes suspended. */
+    async paginateRiderRegistrationRequests(
+        page: number,
+        limit: number,
+        search: string | undefined,
+        tab: 'all' | 'pending' | 'rejected' | 'approved',
+    ): Promise<{
+        data: UserDocument[];
+        total: number;
+        page: number;
+        limit: number;
+        totalPages: number;
+        hasNext: boolean;
+        hasPrev: boolean;
+    }> {
+        const baseStatuses = [
+            UserStatus.PENDING_APPROVAL,
+            UserStatus.REJECTED,
+            UserStatus.ACTIVE,
+            UserStatus.INACTIVE,
+        ];
+        let statusFilter: FilterQuery<UserDocument>['status'];
+        if (tab === 'pending') {
+            statusFilter = UserStatus.PENDING_APPROVAL;
+        } else if (tab === 'rejected') {
+            statusFilter = UserStatus.REJECTED;
+        } else if (tab === 'approved') {
+            statusFilter = { $in: [UserStatus.ACTIVE, UserStatus.INACTIVE] };
+        } else {
+            statusFilter = { $in: baseStatuses };
+        }
+        const conditions: FilterQuery<UserDocument> = {
+            role: UserRole.RIDER,
+            status: statusFilter,
+        };
+        const q = search?.trim();
+        if (q) {
+            const safe = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            conditions.$or = [
+                { email: { $regex: safe, $options: 'i' } },
+                { firstName: { $regex: safe, $options: 'i' } },
+                { lastName: { $regex: safe, $options: 'i' } },
+            ];
+        }
+        return this.paginate(page, limit, conditions, {
+            sort: { createdAt: -1 },
+            select: '-password -refreshToken -tokenInvalidBefore',
+        });
+    }
+
+    /** Admin “Users” screen: passengers (`role: user`), not deleted, with optional search/status. */
+    async paginateAdminAppUsers(
+        page: number,
+        limit: number,
+        search?: string,
+        statusFilter: 'all' | 'active' | 'inactive' | 'suspended' = 'all',
+    ): Promise<{
+        data: UserDocument[];
+        total: number;
+        page: number;
+        limit: number;
+        totalPages: number;
+        hasNext: boolean;
+        hasPrev: boolean;
+    }> {
+        const manageable = [UserStatus.ACTIVE, UserStatus.INACTIVE, UserStatus.SUSPENDED];
+        const conditions: FilterQuery<UserDocument> = {
+            role: UserRole.USER,
+            deletedAt: null,
+            status: { $in: manageable },
+        };
+        if (statusFilter === 'active') {
+            conditions.status = UserStatus.ACTIVE;
+        } else if (statusFilter === 'inactive') {
+            conditions.status = UserStatus.INACTIVE;
+        } else if (statusFilter === 'suspended') {
+            conditions.status = UserStatus.SUSPENDED;
+        }
+        const q = search?.trim();
+        if (q) {
+            const safe = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            conditions.$or = [
+                { email: { $regex: safe, $options: 'i' } },
+                { firstName: { $regex: safe, $options: 'i' } },
+                { lastName: { $regex: safe, $options: 'i' } },
+                { phone: { $regex: safe, $options: 'i' } },
+            ];
+        }
+        return this.paginate(page, limit, conditions, {
+            sort: { createdAt: -1 },
+            select: '-password -refreshToken -tokenInvalidBefore',
+            populate: [
+                {
+                    path: 'avatarFile',
+                    select: 'name path mimeType size url',
+                },
+            ],
+        });
     }
 }

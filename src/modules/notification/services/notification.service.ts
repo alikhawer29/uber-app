@@ -87,6 +87,37 @@ export class NotificationService {
         }
     }
 
+    /**
+     * Persist a notification for a single user. Swallows errors so approval/reject flows are not rolled back.
+     */
+    async notifyUserNonBlocking(params: {
+        recipientId: string;
+        title: string;
+        message: string;
+        type: NotificationType;
+        senderId?: string;
+        data?: Record<string, unknown>;
+    }): Promise<void> {
+        if (!params.recipientId?.trim()) {
+            this.logger.warn('notifyUserNonBlocking: missing recipientId');
+            return;
+        }
+        try {
+            await this.createUserNotification({
+                recipient: params.recipientId.trim(),
+                title: params.title,
+                message: params.message,
+                type: params.type,
+                sender: params.senderId,
+                data: params.data as Record<string, any> | undefined,
+            });
+        } catch (error) {
+            this.logger.error(
+                `notifyUserNonBlocking failed for recipient ${params.recipientId}: ${error instanceof Error ? error.message : error}`,
+            );
+        }
+    }
+
     async getUserNotifications(userId: string, status?: NotificationStatus) {
         return this.notificationRepository.findByRecipient(userId, status);
     }

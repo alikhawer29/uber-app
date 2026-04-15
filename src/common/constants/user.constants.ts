@@ -2,12 +2,17 @@ export enum UserRole {
     ADMIN = 'admin',
     USER = 'user',
     SUB_ADMIN = 'sub_admin',
+    RIDER = 'rider',
 }
 
 export enum UserStatus {
     ACTIVE = 'active',
     INACTIVE = 'inactive',
     SUSPENDED = 'suspended',
+    /** Rider application awaiting admin review */
+    PENDING_APPROVAL = 'pending_approval',
+    /** Rider application rejected by admin */
+    REJECTED = 'rejected',
 }
 
 export enum Permission {
@@ -32,6 +37,11 @@ export enum Permission {
 export const RolePermissions = {
     [UserRole.ADMIN]: Object.values(Permission),
     [UserRole.USER]: [
+        Permission.USER_PROFILE_READ,
+        Permission.USER_PROFILE_UPDATE,
+        Permission.USER_PASSWORD_UPDATE,
+    ],
+    [UserRole.RIDER]: [
         Permission.USER_PROFILE_READ,
         Permission.USER_PROFILE_UPDATE,
         Permission.USER_PASSWORD_UPDATE,

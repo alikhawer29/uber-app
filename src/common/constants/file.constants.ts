@@ -11,6 +11,9 @@ export enum FileCategory {
     PROFILE = 'profile',
     DOCUMENT = 'document',
     ATTACHMENT = 'attachment',
+    RIDER_LICENSE_PLATE = 'rider_license_plate',
+    RIDER_REGISTRATION_DOC = 'rider_registration_doc',
+    RIDER_VEHICLE_PHOTO = 'rider_vehicle_photo',
 }
 
 export const FileMimeTypes = {
