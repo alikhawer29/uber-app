@@ -106,31 +106,69 @@ async function bootstrap() {
     }
   }
 
-  // app.enableCors({
-  //   origin: isProduction
-  //     ? [
-  //       'https://custom-dev.onlinetestingserver.com',
-  //       'http://custom-dev.onlinetestingserver.com'
-  //     ]
-  //     : '*',
-  //   methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
-  //   allowedHeaders: 'Content-Type, Authorization',
-  //   credentials: isProduction,
-  // });
+  const defaultProdOrigins = [
+    'https://custom-dev.onlinetestingserver.com',
+    'http://custom-dev.onlinetestingserver.com',
+  ];
+  const defaultDevOrigins = [
+    'http://localhost:3000',
+    'http://127.0.0.1:3000',
+    'http://localhost:5173',
+    'http://127.0.0.1:5173',
+    'http://localhost:5174',
+    'http://127.0.0.1:5174',
+    'http://localhost:4200',
+    'http://127.0.0.1:4200',
+  ];
+  /** Comma-separated extra origins (staging domains, tunnel URLs, etc.). */
+  const corsOriginsFromEnv = (process.env.CORS_ORIGINS ?? '')
+    .split(',')
+    .map((o) => o.trim())
+    .filter(Boolean);
+  /**
+   * When unset/false: production still allows browsers on `http(s)://localhost` / `127.0.0.1` (any port)
+   * so a local UI can call the deployed API. Set `CORS_STRICT_PRODUCTION=true` to allow only prod domains + CORS_ORIGINS.
+   */
+  const strictProduction =
+    process.env.CORS_STRICT_PRODUCTION === '1' ||
+    process.env.CORS_STRICT_PRODUCTION === 'true' ||
+    process.env.CORS_STRICT_PRODUCTION === 'yes';
+
+  const staticAllowList = isProduction
+    ? strictProduction
+      ? [...defaultProdOrigins]
+      : [...defaultProdOrigins, ...defaultDevOrigins]
+    : [...defaultDevOrigins];
+  const corsAllowedOrigins = [...new Set([...staticAllowList, ...corsOriginsFromEnv])];
+  const allowedOriginSet = new Set(corsAllowedOrigins);
+
+  const localhostOriginOk = (origin: string) =>
+    /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(origin);
+
   app.enableCors({
-    origin: isProduction
-      ? [
-        'https://custom-dev.onlinetestingserver.com',
-        'http://custom-dev.onlinetestingserver.com'
-      ]
-      : [
-        'http://localhost:5173',
-        'http://127.0.0.1:5173'
-      ],
+    origin: (origin, callback) => {
+      if (!origin) {
+        return callback(null, true);
+      }
+      if (allowedOriginSet.has(origin)) {
+        return callback(null, true);
+      }
+      const allowLooseLocalhost = !(isProduction && strictProduction);
+      if (allowLooseLocalhost && localhostOriginOk(origin)) {
+        return callback(null, true);
+      }
+      return callback(null, false);
+    },
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
-    allowedHeaders: 'Content-Type, Authorization',
-    credentials: true,   // ALWAYS true in dev
+    allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'X-Requested-With'],
+    exposedHeaders: ['Content-Disposition'],
+    credentials: true,
+    optionsSuccessStatus: 204,
   });
+
+  if (isProduction && !strictProduction) {
+    console.log('🌐 CORS: production API allows requests from localhost / 127.0.0.1 (any port). Set CORS_STRICT_PRODUCTION=true to disable.');
+  }
 
   // Global prefix
   app.setGlobalPrefix('api/v1');
