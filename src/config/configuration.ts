@@ -69,6 +69,14 @@ export default () => {
         cron: {
             secret: process.env.CRON_SECRET || 'default-cron-secret-change-in-production',
         },
+        ride: {
+            /** Decimal fraction applied to pre-discount subtotal (e.g. 0.05 = 5%) */
+            taxRate: parseFloat(process.env.RIDE_TAX_RATE || '0'),
+            /** Used to estimate trip duration from straight-line distance */
+            avgSpeedKmh: parseFloat(process.env.RIDE_AVG_SPEED_KMH || '30'),
+            /** Multiplier on `waitingFeePerMin` to approximate time-based fare component */
+            timeFareFactor: parseFloat(process.env.RIDE_TIME_FARE_FACTOR || '0.35'),
+        },
         firebase: {
             // Firebase service account JSON (can be provided as string or file path)
             // Option 1: JSON string (escape quotes or use base64)

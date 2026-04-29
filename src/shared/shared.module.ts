@@ -21,6 +21,10 @@ import {
     RiderVehicleUpdateRequestSchema,
 } from './schemas/rider-vehicle-update-request.schema';
 import { RiderVehicleUpdateRequestRepository } from './repositories/rider-vehicle-update-request.repository';
+import { Ride, RideSchema } from './schemas/ride.schema';
+import { PromoCode, PromoCodeSchema } from './schemas/promo-code.schema';
+import { RideRepository } from './repositories/ride.repository';
+import { PromoCodeRepository } from './repositories/promo-code.repository';
 
 @Module({
     imports: [
@@ -34,6 +38,8 @@ import { RiderVehicleUpdateRequestRepository } from './repositories/rider-vehicl
             { name: SavedPlace.name, schema: SavedPlaceSchema },
             { name: RiderVehicle.name, schema: RiderVehicleSchema },
             { name: RiderVehicleUpdateRequest.name, schema: RiderVehicleUpdateRequestSchema },
+            { name: Ride.name, schema: RideSchema },
+            { name: PromoCode.name, schema: PromoCodeSchema },
         ]),
     ],
     providers: [
@@ -46,6 +52,8 @@ import { RiderVehicleUpdateRequestRepository } from './repositories/rider-vehicl
         SavedPlaceRepository,
         RiderVehicleRepository,
         RiderVehicleUpdateRequestRepository,
+        RideRepository,
+        PromoCodeRepository,
     ],
     exports: [
         MongooseModule,
@@ -58,6 +66,8 @@ import { RiderVehicleUpdateRequestRepository } from './repositories/rider-vehicl
         SavedPlaceRepository,
         RiderVehicleRepository,
         RiderVehicleUpdateRequestRepository,
+        RideRepository,
+        PromoCodeRepository,
     ],
 })
 export class SharedModule { }

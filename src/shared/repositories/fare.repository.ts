@@ -22,6 +22,15 @@ export class FareRepository extends BaseRepository<FareDocument> {
         return this.model.findById(id).populate('vehicleTypeId').exec();
     }
 
+    /** All active fares with vehicle type for ride booking quotes */
+    async findAllActiveWithVehicleType(): Promise<FareDocument[]> {
+        return this.model
+            .find({ isActive: true })
+            .populate('vehicleTypeId')
+            .sort({ createdAt: -1 })
+            .exec();
+    }
+
     async paginateWithVehicleType(
         page: number,
         limit: number,

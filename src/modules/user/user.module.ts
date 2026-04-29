@@ -7,7 +7,9 @@ import { UserAuthService } from './services/user-auth.service';
 import { UserAuthController } from './controllers/user-auth.controller';
 import { UserController } from './controllers/user.controller';
 import { UserSavedPlaceController } from './controllers/user-saved-place.controller';
+import { UserRideController } from './controllers/user-ride.controller';
 import { UserSavedPlaceService } from './services/user-saved-place.service';
+import { UserRideService } from './services/user-ride.service';
 import { SharedModule } from 'src/shared/shared.module';
 import { multerConfig } from 'src/config/multer.config';
 import { MulterModule } from '@nestjs/platform-express';
@@ -22,8 +24,8 @@ import { CommonModule } from 'src/common/common.module';
         NotificationModule,
         MulterModule.register(multerConfig),
     ],
-    providers: [UserService, UserAuthService, UserSavedPlaceService],
-    controllers: [UserAuthController, UserController, UserSavedPlaceController],
+    providers: [UserService, UserAuthService, UserSavedPlaceService, UserRideService],
+    controllers: [UserAuthController, UserController, UserSavedPlaceController, UserRideController],
     exports: [UserAuthService],
 })
 export class UserModule { }
