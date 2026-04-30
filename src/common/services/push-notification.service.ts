@@ -120,7 +120,7 @@ export class PushNotificationService {
                 },
             };
 
-            const response = await messaging.sendEachForMulticast(message);
+            const response = await messaging.sendMulticast(message);
             
             this.logger.log(
                 `Push notifications sent: ${response.successCount} successful, ${response.failureCount} failed`
