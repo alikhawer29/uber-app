@@ -20,12 +20,24 @@ import { FareDocument } from 'src/shared/schemas/fare.schema';
 import { PromoDiscountType } from 'src/shared/schemas/promo-code.schema';
 import { VehicleTypeDocument } from 'src/shared/schemas/vehicle-type.schema';
 import { CreateRideDto } from '../dto/create-ride.dto';
+import { EstimateRideDto } from '../dto/estimate-ride.dto';
+import { BookRideDto } from '../dto/book-ride.dto';
+import { ScheduleRideDto } from '../dto/schedule-ride.dto';
+import { CancelRideDto, CancelReason } from '../dto/cancel-ride.dto';
+import { RideReviewDto } from '../dto/ride-review.dto';
 import { ListUserRidesQueryDto } from '../dto/list-user-rides-query.dto';
 import { RideQuoteQueryDto } from '../dto/ride-quote-query.dto';
 import { ValidatePromoDto } from '../dto/validate-promo.dto';
 import { ValidateScheduleDto } from '../dto/validate-schedule.dto';
+import { EventEmitter2 } from '@nestjs/event-emitter';
+import { RideEvents } from '../events/ride.events';
+import { RideComplaintRepository } from 'src/shared/repositories/ride-complaint.repository';
+import { RideComplaintDto } from '../dto/ride-complaint.dto';
+import { resolveScheduledAtFromPayload } from '../utils/resolve-scheduled-at.util';
 
 const SCHEDULE_BUFFER_MS = 60_000;
+const SCHEDULE_MIN_MS = 15 * 60_000;
+const SCHEDULE_MAX_MS = 7 * 24 * 60 * 60_000;
 
 @Injectable()
 export class UserRideService {
@@ -36,6 +48,8 @@ export class UserRideService {
         private readonly rideRepository: RideRepository,
         private readonly promoCodeRepository: PromoCodeRepository,
         private readonly userPromotionRepository: UserPromotionRepository,
+        private readonly eventEmitter: EventEmitter2,
+        private readonly rideComplaintRepository: RideComplaintRepository,
     ) {}
 
     async quote(query: RideQuoteQueryDto) {
@@ -102,6 +116,66 @@ export class UserRideService {
             distanceKm,
             estimatedDurationMinutes: estimatedDuration,
             options,
+        };
+    }
+
+    async estimate(dto: EstimateRideDto) {
+        const distance = roundMoney(
+            haversineDistanceKm(
+                dto.pickupLatitude,
+                dto.pickupLongitude,
+                dto.dropOffLatitude,
+                dto.dropOffLongitude,
+            ),
+        );
+        const avgSpeed = this.configService.get<number>('ride.avgSpeedKmh') ?? 30;
+        const timeFareFactor = this.configService.get<number>('ride.timeFareFactor') ?? 0.35;
+        const estimatedDuration = estimateDurationMinutes(distance, avgSpeed);
+
+        const scheduled = resolveScheduledAtFromPayload(dto);
+
+        const fares = await this.fareRepository.findAllActiveWithVehicleType();
+        const estimates: Array<Record<string, unknown>> = [];
+
+        for (const fare of fares) {
+            const vt = fare.vehicleTypeId as unknown as VehicleTypeDocument | undefined;
+            if (!vt || !vt.isActive) continue;
+
+            const priced = this.applyMinimumFare(
+                this.computeFareComponents(distance, estimatedDuration, fare, timeFareFactor),
+                fare.minimumFare,
+            );
+            const basePrice = roundMoney(priced.baseFare + priced.distanceFare + priced.timeFare);
+
+            estimates.push({
+                vehicleTypeId: String(vt._id),
+                vehicleTypeName: vt.name,
+                basePrice,
+                discountedPrice: basePrice,
+                facilities: vt.facilities,
+                image: vt.image ?? null,
+            });
+        }
+
+        const data: Record<string, unknown> = {
+            distance,
+            duration: estimatedDuration,
+            estimates,
+        };
+        if (scheduled) {
+            data.scheduledAt = scheduled.toISOString();
+            data.estimatedTripStartLabel = scheduled.toLocaleString(undefined, {
+                weekday: 'short',
+                month: 'short',
+                day: 'numeric',
+                hour: 'numeric',
+                minute: '2-digit',
+            });
+        }
+
+        return {
+            success: true,
+            data,
         };
     }
 
@@ -287,10 +361,237 @@ export class UserRideService {
         return ride;
     }
 
+    /**
+     * Book Now (no schedule fields) or Schedule Later (`scheduledAt` or `scheduledAtDate` + `scheduledAtTime`).
+     */
+    async bookRide(userId: string, dto: BookRideDto) {
+        if (dto.paymentMethod === RidePaymentType.CARD && !dto.cardId) {
+            throw new BadRequestException({ code: 'CARD_NOT_FOUND', message: 'cardId is required for card payments' });
+        }
+
+        const scheduled = resolveScheduledAtFromPayload(dto);
+        if (scheduled) {
+            return this.bookScheduled(userId, dto, scheduled);
+        }
+
+        const ride = await this.createRide(userId, {
+            pickupAddress: dto.pickupAddress,
+            pickupLat: dto.pickupLatitude,
+            pickupLng: dto.pickupLongitude,
+            dropAddress: dto.dropOffAddress,
+            dropLat: dto.dropOffLatitude,
+            dropLng: dto.dropOffLongitude,
+            startTime: new Date().toISOString(),
+            isScheduled: false,
+            vehicleTypeId: dto.vehicleTypeId,
+            paymentType: dto.paymentMethod,
+            promoCode: dto.promoCode,
+        });
+
+        const updated = await this.rideRepository.update(String((ride as any)._id), {
+            status: RideStatus.SEARCHING,
+            notes: dto.notes ?? null,
+            cardId: dto.cardId ? new Types.ObjectId(dto.cardId) : null,
+        } as any);
+
+        this.eventEmitter.emit(RideEvents.REQUEST_MATCHING, {
+            rideId: String((updated as any)?._id ?? (ride as any)._id),
+            userId,
+        });
+
+        return {
+            success: true,
+            data: {
+                rideId: String((updated as any)?._id ?? (ride as any)._id),
+                status: RideStatus.SEARCHING,
+                fare: roundMoney((updated as any).baseFare + (updated as any).distanceFare + (updated as any).timeFare + (updated as any).tax),
+                discountedFare: (updated as any).totalAmount,
+                pickupAddress: (updated as any).pickupAddress,
+                dropOffAddress: (updated as any).dropAddress,
+                vehicleType: (updated as any).rideType,
+                paymentMethod: (updated as any).paymentType,
+                scheduledAt: null,
+                createdAt: (updated as any).createdAt,
+            },
+        };
+    }
+
+    private async bookScheduled(userId: string, dto: BookRideDto, scheduled: Date) {
+        const now = Date.now();
+        if (scheduled.getTime() < now + SCHEDULE_MIN_MS) {
+            throw new BadRequestException({
+                code: 'INVALID_SCHEDULE_TIME',
+                message: 'scheduledAt must be at least 15 minutes in the future',
+            });
+        }
+        if (scheduled.getTime() > now + SCHEDULE_MAX_MS) {
+            throw new BadRequestException({
+                code: 'SCHEDULE_TOO_FAR',
+                message: 'Cannot schedule more than 7 days in advance',
+            });
+        }
+
+        const ride = await this.createRide(userId, {
+            pickupAddress: dto.pickupAddress,
+            pickupLat: dto.pickupLatitude,
+            pickupLng: dto.pickupLongitude,
+            dropAddress: dto.dropOffAddress,
+            dropLat: dto.dropOffLatitude,
+            dropLng: dto.dropOffLongitude,
+            startTime: scheduled.toISOString(),
+            isScheduled: true,
+            vehicleTypeId: dto.vehicleTypeId,
+            paymentType: dto.paymentMethod,
+            promoCode: dto.promoCode,
+        });
+
+        const updated = await this.rideRepository.update(String((ride as any)._id), {
+            status: RideStatus.SCHEDULED,
+            notes: dto.notes ?? null,
+            cardId: dto.cardId ? new Types.ObjectId(dto.cardId) : null,
+        } as any);
+
+        this.eventEmitter.emit(RideEvents.STATUS_UPDATED, {
+            rideId: String((updated as any)?._id ?? (ride as any)._id),
+            status: RideStatus.SCHEDULED,
+            userId,
+        });
+
+        return {
+            success: true,
+            data: {
+                rideId: String((updated as any)?._id ?? (ride as any)._id),
+                status: RideStatus.SCHEDULED,
+                scheduledAt: scheduled.toISOString(),
+                fare: (updated as any).totalAmount,
+                vehicleType: (updated as any).rideType,
+            },
+        };
+    }
+
+    /** @deprecated Same as `bookRide` — use POST /user/rides/book with schedule fields */
+    async schedule(userId: string, dto: ScheduleRideDto) {
+        return this.bookRide(userId, dto);
+    }
+
+    async getActiveRide(userId: string) {
+        const ride = await this.rideRepository.findActiveForUser(userId);
+        if (!ride) {
+            throw new NotFoundException({ code: 'NO_ACTIVE_RIDE', message: 'User has no active ride at this time' });
+        }
+        return { success: true, data: { rideId: String((ride as any)._id), status: ride.status, ride } };
+    }
+
+    async getRideDetails(userId: string, rideId: string) {
+        const ride = await this.rideRepository.findOwnedByUser(rideId, userId);
+        if (!ride) throw new NotFoundException({ code: 'RIDE_NOT_FOUND', message: 'Ride not found' });
+        return { success: true, data: { rideId: String((ride as any)._id), ride } };
+    }
+
+    async cancelRide(userId: string, rideId: string, dto: CancelRideDto) {
+        const ride = await this.rideRepository.findOwnedByUser(rideId, userId);
+        if (!ride) throw new NotFoundException({ code: 'RIDE_NOT_FOUND', message: 'No ride found with this ID' });
+
+        const cancellableStatuses = [
+            RideStatus.SEARCHING,
+            RideStatus.ACCEPTED,
+            RideStatus.ARRIVED,
+            RideStatus.SCHEDULED,
+            RideStatus.PENDING,
+        ];
+        if (!cancellableStatuses.includes(ride.status as any)) {
+            throw new BadRequestException({ code: 'RIDE_NOT_CANCELLABLE', message: 'Ride is in a status that cannot be cancelled' });
+        }
+
+        if (dto.reason === CancelReason.OTHER && !dto.reasonNote?.trim()) {
+            throw new BadRequestException({ code: 'VALIDATION_ERROR', message: 'reasonNote is required when reason = other' });
+        }
+
+        // Fee rules placeholder: apply 1% if already accepted (as spec)
+        const fareBeforeDiscount = roundMoney(ride.baseFare + ride.distanceFare + ride.timeFare + ride.tax);
+        const cancellationFeeApplied = ride.status === RideStatus.ACCEPTED;
+        const cancellationFee = cancellationFeeApplied ? roundMoney(fareBeforeDiscount * 0.01) : 0;
+
+        await this.rideRepository.update(String((ride as any)._id), {
+            status: RideStatus.CANCELLED,
+            cancelledBy: 'user',
+            cancelReason: dto.reason === CancelReason.OTHER ? `${dto.reason}:${dto.reasonNote?.trim()}` : dto.reason,
+        } as any);
+
+        return {
+            success: true,
+            message: 'Ride cancelled successfully',
+            data: {
+                cancellationFeeApplied,
+                cancellationFee,
+                walletDeducted: cancellationFeeApplied ? cancellationFee : 0,
+            },
+        };
+    }
+
+    async submitReview(userId: string, rideId: string, dto: RideReviewDto) {
+        const ride = await this.rideRepository.findOwnedByUser(rideId, userId);
+        if (!ride) throw new NotFoundException({ code: 'RIDE_NOT_FOUND', message: 'Ride not found' });
+
+        if (ride.status !== RideStatus.COMPLETED) {
+            throw new BadRequestException({ code: 'RIDE_NOT_COMPLETED', message: 'Can only review completed rides' });
+        }
+        if (ride.ratingByUser != null) {
+            throw new BadRequestException({ code: 'ALREADY_REVIEWED', message: 'A review has already been submitted for this ride' });
+        }
+
+        await this.rideRepository.update(String((ride as any)._id), {
+            ratingByUser: dto.rating,
+            reviewByUser: dto.review?.trim() || null,
+        } as any);
+
+        return { success: true, message: 'Review submitted successfully' };
+    }
+
+    async submitComplaint(userId: string, rideId: string, dto: RideComplaintDto) {
+        const ride = await this.rideRepository.findOwnedByUser(rideId, userId);
+        if (!ride) throw new NotFoundException({ code: 'RIDE_NOT_FOUND', message: 'Ride not found' });
+
+        const exists = await this.rideComplaintRepository.existsForRideAndUser(rideId, userId);
+        if (exists) {
+            throw new BadRequestException({ code: 'COMPLAINT_ALREADY_SUBMITTED', message: 'A complaint was already submitted for this ride' });
+        }
+
+        await this.rideComplaintRepository.create({
+            rideId: new Types.ObjectId(rideId),
+            userId: new Types.ObjectId(userId),
+            message: dto.message.trim(),
+        } as any);
+
+        return { success: true, message: 'Complaint submitted successfully', data: { complaintId: 'created' } };
+    }
+
     async listMyRides(userId: string, query: ListUserRidesQueryDto) {
         const page = query.page ?? 1;
         const limit = query.limit ?? 10;
-        return this.rideRepository.findByUserId(userId, page, limit, query.status);
+        const result = await this.rideRepository.findByUserId(userId, page, limit, query.status);
+        return {
+            success: true,
+            data: {
+                rides: result.data.map((r) => ({
+                    rideId: String((r as any)._id),
+                    status: r.status,
+                    riderName: null,
+                    fare: r.totalAmount,
+                    discountedFare: r.totalAmount,
+                    date: r.startTime ? new Date(r.startTime).toISOString() : null,
+                    mapSnapshot: null,
+                    pickupAddress: r.pickupAddress,
+                    dropOffAddress: r.dropAddress,
+                })),
+                pagination: {
+                    total: result.total,
+                    page: result.page,
+                    limit: result.limit,
+                    totalPages: result.totalPages,
+                },
+            },
+        };
     }
 
     private computeFareComponents(

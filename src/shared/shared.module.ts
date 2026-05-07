@@ -29,6 +29,20 @@ import { ContactUsSubmission, ContactUsSubmissionSchema } from './schemas/contac
 import { ContactUsSubmissionRepository } from './repositories/contact-us-submission.repository';
 import { UserPromotion, UserPromotionSchema } from './schemas/user-promotion.schema';
 import { UserPromotionRepository } from './repositories/user-promotion.repository';
+import { RiderLocation, RiderLocationSchema } from './schemas/rider-location.schema';
+import { RiderLocationRepository } from './repositories/rider-location.repository';
+import { RideRequest, RideRequestSchema } from './schemas/ride-request.schema';
+import { RideRequestRepository } from './repositories/ride-request.repository';
+import { RideMessage, RideMessageSchema } from './schemas/ride-message.schema';
+import { RideMessageRepository } from './repositories/ride-message.repository';
+import { RideComplaint, RideComplaintSchema } from './schemas/ride-complaint.schema';
+import { RideComplaintRepository } from './repositories/ride-complaint.repository';
+import { UserCard, UserCardSchema } from './schemas/user-card.schema';
+import { UserCardRepository } from './repositories/user-card.repository';
+import { Wallet, WalletSchema } from './schemas/wallet.schema';
+import { WalletRepository } from './repositories/wallet.repository';
+import { WalletTransaction, WalletTransactionSchema } from './schemas/wallet-transaction.schema';
+import { WalletTransactionRepository } from './repositories/wallet-transaction.repository';
 
 @Module({
     imports: [
@@ -46,6 +60,13 @@ import { UserPromotionRepository } from './repositories/user-promotion.repositor
             { name: PromoCode.name, schema: PromoCodeSchema },
             { name: ContactUsSubmission.name, schema: ContactUsSubmissionSchema },
             { name: UserPromotion.name, schema: UserPromotionSchema },
+            { name: RiderLocation.name, schema: RiderLocationSchema },
+            { name: RideRequest.name, schema: RideRequestSchema },
+            { name: RideMessage.name, schema: RideMessageSchema },
+            { name: RideComplaint.name, schema: RideComplaintSchema },
+            { name: UserCard.name, schema: UserCardSchema },
+            { name: Wallet.name, schema: WalletSchema },
+            { name: WalletTransaction.name, schema: WalletTransactionSchema },
         ]),
     ],
     providers: [
@@ -62,6 +83,13 @@ import { UserPromotionRepository } from './repositories/user-promotion.repositor
         PromoCodeRepository,
         ContactUsSubmissionRepository,
         UserPromotionRepository,
+        RiderLocationRepository,
+        RideRequestRepository,
+        RideMessageRepository,
+        RideComplaintRepository,
+        UserCardRepository,
+        WalletRepository,
+        WalletTransactionRepository,
     ],
     exports: [
         MongooseModule,
@@ -78,6 +106,13 @@ import { UserPromotionRepository } from './repositories/user-promotion.repositor
         PromoCodeRepository,
         ContactUsSubmissionRepository,
         UserPromotionRepository,
+        RiderLocationRepository,
+        RideRequestRepository,
+        RideMessageRepository,
+        RideComplaintRepository,
+        UserCardRepository,
+        WalletRepository,
+        WalletTransactionRepository,
     ],
 })
 export class SharedModule { }

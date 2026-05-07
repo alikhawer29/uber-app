@@ -58,6 +58,12 @@ export class Ride {
     @Prop({ type: String, required: true, trim: true, maxlength: 50 })
     rideType: string;
 
+    @Prop({ type: String, default: null, maxlength: 300 })
+    notes?: string | null;
+
+    @Prop({ type: Types.ObjectId, default: null })
+    cardId?: Types.ObjectId | null;
+
     @Prop({ type: Number, required: true, default: 0 })
     baseFare: number;
 
@@ -116,11 +122,18 @@ export class Ride {
     @Prop({ type: Number, default: null, min: 0, max: 5 })
     ratingByUser?: number | null;
 
+    @Prop({ type: String, default: null, maxlength: 500 })
+    reviewByUser?: string | null;
+
     @Prop({ type: Number, default: null, min: 0, max: 5 })
     ratingByDriver?: number | null;
 
     @Prop({ type: Types.ObjectId, ref: 'VehicleType', default: null })
     vehicleTypeId?: Types.ObjectId | null;
+
+    /** Stripe PaymentIntent id after card charge on completion */
+    @Prop({ type: String, default: null })
+    stripePaymentIntentId?: string | null;
 }
 
 export const RideSchema = SchemaFactory.createForClass(Ride);

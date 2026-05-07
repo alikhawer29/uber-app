@@ -1,4 +1,5 @@
 import { Controller, Get, Put, Post, Body, UseInterceptors, UploadedFile, ParseFilePipe, MaxFileSizeValidator } from '@nestjs/common';
+import { Public } from 'src/common/decorators/public.decorator';
 import { MultipartFormFieldsInterceptor } from 'src/common/interceptors/multipart-form-fields.interceptor';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiConsumes, ApiBody } from '@nestjs/swagger';
@@ -12,6 +13,7 @@ import { Roles } from 'src/common/decorators/roles.decorator';
 import { UserRole } from 'src/common/constants/user.constants';
 import { ContactUsSenderRole } from 'src/shared/schemas/contact-us-submission.schema';
 import { multerConfig } from 'src/config/multer.config';
+import { VehicleTypeRepository } from 'src/shared/repositories/vehicle-type.repository';
 
 @ApiTags('User')
 @ApiBearerAuth()
@@ -20,7 +22,24 @@ export class UserController {
     constructor(
         private readonly userService: UserService,
         private readonly contactUsService: ContactUsService,
+        private readonly vehicleTypeRepository: VehicleTypeRepository,
     ) { }
+
+    @Public()
+    @Get('vehicle-types')
+    @ApiOperation({ summary: 'List active vehicle types (passenger ride booking)' })
+    @ApiResponse({ status: 200, description: 'Active vehicle types for Mini / Business cards, etc.' })
+    async listVehicleTypes() {
+        const { data } = await this.vehicleTypeRepository.paginateActive(1, 100);
+        // Return plain payload — TransformInterceptor already wraps { success, data, timestamp }
+        return data.map((d: any) => ({
+            id: d._id?.toString?.() ?? String(d._id),
+            name: d.name,
+            facilities: d.facilities,
+            image: d.image,
+            sortOrder: d.sortOrder,
+        }));
+    }
 
     @Get('profile')
     @ApiOperation({ summary: 'Get user profile' })
