@@ -2,6 +2,7 @@ import {
     BadRequestException,
     Body,
     Controller,
+    Get,
     HttpCode,
     HttpException,
     HttpStatus,
@@ -13,6 +14,7 @@ import {
 import { FileFieldsInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiBody, ApiConsumes, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import type { Request } from 'express';
+import { CurrentUser } from 'src/common/decorators/current-user.decorator';
 import { Roles } from 'src/common/decorators/roles.decorator';
 import { UserRole } from 'src/common/constants/user.constants';
 import { multerConfig } from 'src/config/multer.config';
@@ -27,6 +29,17 @@ const MAX_IMAGES_PER_FIELD = 15;
 @Controller('rider/vehicle')
 export class RiderVehicleController {
     constructor(private readonly riderVehicleUpdateService: RiderVehicleUpdateService) {}
+
+    @Get()
+    @ApiOperation({
+        summary: 'Get current rider vehicle',
+        description:
+            'Returns the latest registered vehicle for this account, including vehicle type (name, facilities, image) and approval status.',
+    })
+    @ApiResponse({ status: 200, description: 'Vehicle details' })
+    getMyVehicle(@CurrentUser() rider: { id: string }) {
+        return this.riderVehicleUpdateService.getMyVehicle(rider.id);
+    }
 
     @Post('update-request')
     @HttpCode(HttpStatus.CREATED)

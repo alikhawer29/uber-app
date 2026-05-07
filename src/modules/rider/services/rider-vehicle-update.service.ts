@@ -3,6 +3,7 @@ import {
     ConflictException,
     Injectable,
     InternalServerErrorException,
+    NotFoundException,
 } from '@nestjs/common';
 import { Types } from 'mongoose';
 import { UserRepository } from 'src/shared/repositories/user.repository';
@@ -32,6 +33,47 @@ export class RiderVehicleUpdateService {
         private readonly fileRepository: FileRepository,
         private readonly notificationService: NotificationService,
     ) {}
+
+    /** Latest rider vehicle row with populated vehicle type (any approval status). */
+    async getMyVehicle(userId: string) {
+        const vehicle = await this.riderVehicleRepository.findLatestByUserIdWithVehicleType(userId);
+        if (!vehicle) {
+            throw new NotFoundException({
+                code: 'VEHICLE_NOT_FOUND',
+                message: 'No vehicle found for this account',
+            });
+        }
+        const doc = vehicle as any;
+        const vt = doc.vehicleTypeId;
+        const vehicleType =
+            vt && typeof vt === 'object' && vt.name !== undefined
+                ? {
+                      id: String(vt._id),
+                      name: vt.name,
+                      facilities: vt.facilities ?? [],
+                      image: vt.image ?? null,
+                  }
+                : { id: String(vt) };
+
+        return {
+            success: true,
+            data: {
+                id: String(doc._id),
+                vehicleType,
+                brandName: doc.brandName,
+                vehicleName: doc.vehicleName,
+                vehicleColor: doc.vehicleColor,
+                licensePlateNumber: doc.licensePlateNumber,
+                approvalStatus: doc.approvalStatus,
+                rejectionReason: doc.rejectionReason ?? null,
+                licensePlateImageUrls: doc.licensePlateImageUrls ?? [],
+                registrationDocumentUrls: doc.registrationDocumentUrls ?? [],
+                vehicleImageUrls: doc.vehicleImageUrls ?? [],
+                createdAt: doc.createdAt,
+                updatedAt: doc.updatedAt,
+            },
+        };
+    }
 
     async submitVehicleUpdateRequest(
         userId: string,
