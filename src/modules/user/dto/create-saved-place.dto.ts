@@ -1,6 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
+    IsEnum,
     IsLatitude,
     IsLongitude,
     IsNotEmpty,
@@ -9,8 +10,17 @@ import {
     IsString,
     MaxLength,
 } from 'class-validator';
+import { SavedPlaceType } from 'src/shared/schemas/saved-place.schema';
 
 export class CreateSavedPlaceDto {
+    @ApiProperty({
+        enum: SavedPlaceType,
+        example: SavedPlaceType.HOME,
+        description: 'Place category: home, work, or a generic saved pin',
+    })
+    @IsEnum(SavedPlaceType)
+    type: SavedPlaceType;
+
     @ApiProperty({ example: 'Home', description: 'Label shown in Saved Places (Figma: Name)' })
     @IsString()
     @IsNotEmpty()

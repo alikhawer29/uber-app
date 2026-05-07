@@ -23,6 +23,7 @@ export class UserSavedPlaceService {
     async create(userId: string, dto: CreateSavedPlaceDto) {
         const payload = {
             userId: new Types.ObjectId(userId),
+            type: dto.type,
             name: dto.name.trim(),
             formattedAddress: dto.formattedAddress.trim(),
             googlePlaceId: dto.googlePlaceId?.trim() || undefined,
@@ -47,6 +48,7 @@ export class UserSavedPlaceService {
             throw new NotFoundException('Saved place not found');
         }
         const update: Record<string, unknown> = {};
+        if (dto.type !== undefined) update.type = dto.type;
         if (dto.name !== undefined) update.name = dto.name.trim();
         if (dto.formattedAddress !== undefined) update.formattedAddress = dto.formattedAddress.trim();
         if (dto.googlePlaceId !== undefined) {
@@ -73,14 +75,10 @@ export class UserSavedPlaceService {
     }
 
     async remove(userId: string, placeId: string) {
-        const doc = await this.savedPlaceRepository.findOwnedByUser(placeId, userId);
-        if (!doc) {
+        const deleted = await this.savedPlaceRepository.deleteOwnedByUser(placeId, userId);
+        if (!deleted) {
             throw new NotFoundException('Saved place not found');
         }
-        const updated = await this.savedPlaceRepository.update(placeId, { isActive: false } as any);
-        if (!updated) {
-            throw new NotFoundException('Saved place not found');
-        }
-        return { message: 'Saved place removed' };
+        return { message: 'Saved place deleted' };
     }
 }

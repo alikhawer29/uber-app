@@ -1,5 +1,6 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseInterceptors } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { MultipartFormFieldsInterceptor } from 'src/common/interceptors/multipart-form-fields.interceptor';
 import { Roles } from 'src/common/decorators/roles.decorator';
 import { UserRole } from 'src/common/constants/user.constants';
 import { AdminFareService } from '../services/admin-fare.service';
@@ -10,6 +11,7 @@ import { AdminListQueryDto } from '../dto/list-query.dto';
 @ApiTags('Admin — Fares')
 @ApiBearerAuth()
 @Roles(UserRole.ADMIN)
+@UseInterceptors(MultipartFormFieldsInterceptor)
 @Controller('admin/fares')
 export class AdminFareController {
     constructor(private readonly adminFareService: AdminFareService) {}

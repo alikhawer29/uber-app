@@ -49,7 +49,11 @@ export class UserSavedPlaceController {
     }
 
     @Delete(':id')
-    @ApiOperation({ summary: 'Remove a saved place' })
+    @ApiOperation({
+        summary: 'Delete a saved place',
+        description:
+            'Permanently removes the saved place for the authenticated user. Path: `DELETE /api/v1/user/saved-places/:id` (send the Mongo `_id` from list/get).',
+    })
     async remove(@CurrentUser() user: { id: string }, @Param('id') id: string) {
         return this.userSavedPlaceService.remove(user.id, id);
     }

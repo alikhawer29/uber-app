@@ -8,6 +8,7 @@ import { NotificationModule } from '../notification/notification.module';
 import { multerConfig } from 'src/config/multer.config';
 import { RiderAuthController } from './controllers/rider-auth.controller';
 import { RiderVehicleController } from './controllers/rider-vehicle.controller';
+import { RiderContactController } from './controllers/rider-contact.controller';
 import { RiderAuthService } from './services/rider-auth.service';
 import { RiderVehicleUpdateService } from './services/rider-vehicle-update.service';
 
@@ -20,7 +21,7 @@ import { RiderVehicleUpdateService } from './services/rider-vehicle-update.servi
         NotificationModule,
         MulterModule.register(multerConfig),
     ],
-    controllers: [RiderAuthController, RiderVehicleController],
+    controllers: [RiderAuthController, RiderVehicleController, RiderContactController],
     providers: [RiderAuthService, RiderVehicleUpdateService],
     exports: [RiderAuthService, RiderVehicleUpdateService],
 })

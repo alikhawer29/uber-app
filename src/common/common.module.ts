@@ -3,6 +3,7 @@ import { ConfigModule } from '@nestjs/config';
 import { PassportModule } from '@nestjs/passport';
 import { EmailService } from './services/email.service';
 import { SharedModule } from '../shared/shared.module';
+import { MultipartFormFieldsInterceptor } from './interceptors/multipart-form-fields.interceptor';
 import { RolesGuard } from './guards/roles.guard';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { APP_GUARD } from '@nestjs/core';
@@ -12,6 +13,7 @@ import { APP_GUARD } from '@nestjs/core';
     imports: [ConfigModule, SharedModule, PassportModule],
     providers: [
         EmailService,
+        MultipartFormFieldsInterceptor,
         JwtAuthGuard,
         // Register both guards as APP_GUARD to ensure they run in order
         // JWT guard must run first to authenticate and set user
@@ -25,6 +27,6 @@ import { APP_GUARD } from '@nestjs/core';
             useClass: RolesGuard,
         },
     ],
-  exports: [EmailService, JwtAuthGuard],
+  exports: [EmailService, JwtAuthGuard, MultipartFormFieldsInterceptor],
 })
 export class CommonModule { }

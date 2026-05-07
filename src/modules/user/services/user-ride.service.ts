@@ -13,6 +13,7 @@ import {
 } from 'src/common/utils/geo-pricing.utils';
 import { FareRepository } from 'src/shared/repositories/fare.repository';
 import { PromoCodeRepository } from 'src/shared/repositories/promo-code.repository';
+import { UserPromotionRepository } from 'src/shared/repositories/user-promotion.repository';
 import { RideRepository } from 'src/shared/repositories/ride.repository';
 import { VehicleTypeRepository } from 'src/shared/repositories/vehicle-type.repository';
 import { FareDocument } from 'src/shared/schemas/fare.schema';
@@ -34,6 +35,7 @@ export class UserRideService {
         private readonly vehicleTypeRepository: VehicleTypeRepository,
         private readonly rideRepository: RideRepository,
         private readonly promoCodeRepository: PromoCodeRepository,
+        private readonly userPromotionRepository: UserPromotionRepository,
     ) {}
 
     async quote(query: RideQuoteQueryDto) {
@@ -279,6 +281,7 @@ export class UserRideService {
             await this.promoCodeRepository.update(appliedPromoId, {
                 $inc: { usedCount: 1 },
             } as any);
+            await this.userPromotionRepository.markUsedIfExists(userId, appliedPromoId);
         }
 
         return ride;

@@ -1,10 +1,16 @@
-import { Controller, Get, Put, Body, UseInterceptors, UploadedFile, ParseFilePipe, MaxFileSizeValidator } from '@nestjs/common';
+import { Controller, Get, Put, Post, Body, UseInterceptors, UploadedFile, ParseFilePipe, MaxFileSizeValidator } from '@nestjs/common';
+import { MultipartFormFieldsInterceptor } from 'src/common/interceptors/multipart-form-fields.interceptor';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiConsumes, ApiBody } from '@nestjs/swagger';
 import { UserService } from '../services/user.service';
+import { ContactUsService } from '../services/contact-us.service';
 import { UpdateProfileDto } from '../dto/update-profile.dto';
 import { ChangePasswordDto } from '../dto/change-password.dto';
+import { CreateContactUsDto } from '../dto/create-contact-us.dto';
 import { CurrentUser } from 'src/common/decorators/current-user.decorator';
+import { Roles } from 'src/common/decorators/roles.decorator';
+import { UserRole } from 'src/common/constants/user.constants';
+import { ContactUsSenderRole } from 'src/shared/schemas/contact-us-submission.schema';
 import { multerConfig } from 'src/config/multer.config';
 
 @ApiTags('User')
@@ -13,6 +19,7 @@ import { multerConfig } from 'src/config/multer.config';
 export class UserController {
     constructor(
         private readonly userService: UserService,
+        private readonly contactUsService: ContactUsService,
     ) { }
 
     @Get('profile')
@@ -49,6 +56,21 @@ export class UserController {
     @ApiResponse({ status: 200, description: 'Password changed successfully' })
     async changePassword(@CurrentUser() user: any, @Body() changePasswordDto: ChangePasswordDto) {
         return this.userService.changePassword(user.id, changePasswordDto);
+    }
+
+    @Post('contact-us')
+    @Roles(UserRole.USER)
+    @UseInterceptors(MultipartFormFieldsInterceptor)
+    @ApiConsumes('application/json', 'multipart/form-data')
+    @ApiBody({ type: CreateContactUsDto })
+    @ApiOperation({
+        summary: 'Submit contact us form (passenger app)',
+        description:
+            'Accepts JSON (`application/json`) or form-data (`multipart/form-data`). Plain form-data requires multipart parsing so fields populate correctly.',
+    })
+    @ApiResponse({ status: 201, description: 'Message recorded' })
+    async submitContactUs(@CurrentUser() user: any, @Body() dto: CreateContactUsDto) {
+        return this.contactUsService.submit(user.id, ContactUsSenderRole.USER, dto);
     }
 
 }

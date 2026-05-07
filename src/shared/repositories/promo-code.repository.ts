@@ -15,6 +15,9 @@ export class PromoCodeRepository extends BaseRepository<PromoCodeDocument> {
         if (!code) return null;
         const doc = await this.model.findOne({ code, isActive: true }).exec();
         if (!doc) return null;
+        if (doc.validFrom && doc.validFrom.getTime() > Date.now()) {
+            return null;
+        }
         if (doc.expiresAt && doc.expiresAt.getTime() < Date.now()) {
             return null;
         }

@@ -20,10 +20,20 @@ export class TransformInterceptor<T> implements NestInterceptor<T, Response<T>> 
                 // Convert ObjectIds to strings in the response data
                 const processedData = ObjectIdUtils.convertObjectIdsToStrings(data);
 
+                // Avoid duplicating `message`: handlers often return `{ message: '…' }`; that already
+                // appears under `data`, so the envelope should not repeat it.
+                const msg =
+                    processedData &&
+                    typeof processedData === 'object' &&
+                    !Array.isArray(processedData) &&
+                    typeof (processedData as { message?: unknown }).message === 'string'
+                        ? undefined
+                        : (processedData as { message?: string } | null | undefined)?.message;
+
                 return {
                     success: true,
                     data: processedData,
-                    message: processedData?.message || undefined,
+                    message: msg || undefined,
                     timestamp: now.toISOString(),
                 };
             }),

@@ -1,8 +1,22 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsLatitude, IsLongitude, IsNumber, IsOptional, IsString, MaxLength } from 'class-validator';
+import {
+    IsEnum,
+    IsLatitude,
+    IsLongitude,
+    IsNumber,
+    IsOptional,
+    IsString,
+    MaxLength,
+} from 'class-validator';
+import { SavedPlaceType } from 'src/shared/schemas/saved-place.schema';
 
 export class UpdateSavedPlaceDto {
+    @ApiPropertyOptional({ enum: SavedPlaceType })
+    @IsOptional()
+    @IsEnum(SavedPlaceType)
+    type?: SavedPlaceType;
+
     @ApiPropertyOptional()
     @IsOptional()
     @IsString()

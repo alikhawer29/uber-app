@@ -23,6 +23,10 @@ import { AdminVehicleUpdateRequestsController } from './controllers/admin-vehicl
 import { AdminVehicleUpdateRequestService } from './services/admin-vehicle-update-request.service';
 import { AdminUsersController } from './controllers/admin-users.controller';
 import { AdminUsersService } from './services/admin-users.service';
+import { AdminContactUsController } from './controllers/admin-contact-us.controller';
+import { AdminContactUsService } from './services/admin-contact-us.service';
+import { AdminPromotionsController } from './controllers/admin-promotions.controller';
+import { AdminPromotionsService } from './services/admin-promotions.service';
 
 @Module({
     imports: [
@@ -41,6 +45,8 @@ import { AdminUsersService } from './services/admin-users.service';
         AdminDriverRegistrationService,
         AdminVehicleUpdateRequestService,
         AdminUsersService,
+        AdminContactUsService,
+        AdminPromotionsService,
     ],
     controllers: [
         AdminAuthController,
@@ -53,6 +59,8 @@ import { AdminUsersService } from './services/admin-users.service';
         AdminDriverRegistrationController,
         AdminVehicleUpdateRequestsController,
         AdminUsersController,
+        AdminContactUsController,
+        AdminPromotionsController,
     ],
 })
 export class AdminModule {}

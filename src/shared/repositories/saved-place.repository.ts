@@ -37,4 +37,16 @@ export class SavedPlaceRepository extends BaseRepository<SavedPlaceDocument> {
             })
             .exec();
     }
+
+    /** Permanently deletes the document when it belongs to the user (single round-trip). */
+    async deleteOwnedByUser(placeId: string, userId: string): Promise<boolean> {
+        if (!Types.ObjectId.isValid(placeId)) return false;
+        const result = await this.model
+            .findOneAndDelete({
+                _id: new Types.ObjectId(placeId),
+                userId: new Types.ObjectId(userId),
+            })
+            .exec();
+        return result !== null;
+    }
 }

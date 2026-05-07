@@ -10,6 +10,9 @@ export enum PromoDiscountType {
 
 @Schema({ timestamps: true, collection: 'promo_codes' })
 export class PromoCode {
+    @Prop({ type: String, required: true, trim: true })
+    title: string;
+
     @Prop({ type: String, required: true, unique: true, uppercase: true, trim: true })
     code: string;
 
@@ -26,6 +29,10 @@ export class PromoCode {
 
     @Prop({ type: Boolean, default: true })
     isActive: boolean;
+
+    /** Promo is valid only on/after this date (optional). */
+    @Prop({ type: Date, default: null })
+    validFrom?: Date | null;
 
     @Prop({ type: Date, default: null })
     expiresAt?: Date | null;
@@ -44,3 +51,4 @@ export class PromoCode {
 export const PromoCodeSchema = SchemaFactory.createForClass(PromoCode);
 
 PromoCodeSchema.index({ isActive: 1, expiresAt: 1 });
+PromoCodeSchema.index({ isActive: 1, validFrom: 1, expiresAt: 1 });

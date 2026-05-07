@@ -1,12 +1,28 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Types } from 'mongoose';
 
+/** Stored as JSON field `type` on saved-place documents (home / work / generic saved). */
+export enum SavedPlaceType {
+    HOME = 'home',
+    WORK = 'work',
+    SAVED = 'saved',
+}
+
 export type SavedPlaceDocument = SavedPlace & Document;
 
 @Schema({ timestamps: true })
 export class SavedPlace {
     @Prop({ type: Types.ObjectId, ref: 'User', required: true, index: true })
     userId: Types.ObjectId;
+
+    @Prop({
+        type: String,
+        enum: Object.values(SavedPlaceType),
+        required: true,
+        default: SavedPlaceType.SAVED,
+        index: true,
+    })
+    type: SavedPlaceType;
 
     /** User label, e.g. "Home" (Figma: Name) */
     @Prop({ type: String, required: true, trim: true, maxlength: 200 })
@@ -39,6 +55,9 @@ SavedPlaceSchema.set('toJSON', {
     virtuals: true,
     transform: (_doc, ret: any) => {
         delete ret.__v;
+        if (ret.type == null) {
+            ret.type = SavedPlaceType.SAVED;
+        }
         return ret;
     },
 });
