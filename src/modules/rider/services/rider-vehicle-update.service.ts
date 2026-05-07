@@ -75,6 +75,48 @@ export class RiderVehicleUpdateService {
         };
     }
 
+    /**
+     * Removes a vehicle owned by the rider. If `vehicleId` is omitted, deletes the latest vehicle record.
+     * Also removes vehicle update requests linked to that vehicle.
+     */
+    async deleteVehicle(userId: string, vehicleId?: string) {
+        let targetId = vehicleId?.trim();
+        if (!targetId) {
+            const latest = await this.riderVehicleRepository.findLatestIdForUser(userId);
+            if (!latest) {
+                throw new NotFoundException({
+                    code: 'VEHICLE_NOT_FOUND',
+                    message: 'No vehicle found for this account',
+                });
+            }
+            targetId = latest;
+        }
+
+        const vehicle = await this.riderVehicleRepository.findById(targetId);
+        if (!vehicle || String((vehicle as any).userId) !== userId) {
+            throw new NotFoundException({
+                code: 'VEHICLE_NOT_FOUND',
+                message: 'Vehicle not found for this account',
+            });
+        }
+
+        await this.updateRequestRepository.deleteAllForRiderVehicle(targetId);
+
+        const deleted = await this.riderVehicleRepository.deleteOneOwnedByUser(targetId, userId);
+        if (!deleted) {
+            throw new BadRequestException({
+                code: 'DELETE_FAILED',
+                message: 'Could not delete vehicle',
+            });
+        }
+
+        return {
+            success: true,
+            message: 'Vehicle deleted',
+            data: { vehicleId: targetId },
+        };
+    }
+
     async submitVehicleUpdateRequest(
         userId: string,
         dto: RiderVehicleUpdateDto,

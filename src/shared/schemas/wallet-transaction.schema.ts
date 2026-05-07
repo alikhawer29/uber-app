@@ -8,6 +8,8 @@ export enum WalletTransactionType {
     TOPUP = 'topup',
     DEDUCT = 'deduct',
     ADJUSTMENT = 'adjustment',
+    /** Ride fare credited to driver wallet */
+    EARNING = 'earning',
 }
 
 @Schema({ timestamps: true, collection: 'wallet_transactions' })

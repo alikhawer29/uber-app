@@ -18,7 +18,20 @@ export class TransformInterceptor<T> implements NestInterceptor<T, Response<T>> 
         return next.handle().pipe(
             map(data => {
                 // Convert ObjectIds to strings in the response data
-                const processedData = ObjectIdUtils.convertObjectIdsToStrings(data);
+                let processedData = ObjectIdUtils.convertObjectIdsToStrings(data);
+
+                // Controllers/services often return `{ success: true, data: T }`. The interceptor also
+                // wraps in `{ success, data }`, which produced double nesting. Unwrap one level when it
+                // matches that envelope (success === true and `data` present).
+                if (
+                    processedData &&
+                    typeof processedData === 'object' &&
+                    !Array.isArray(processedData) &&
+                    (processedData as { success?: boolean }).success === true &&
+                    Object.prototype.hasOwnProperty.call(processedData, 'data')
+                ) {
+                    processedData = (processedData as { data: unknown }).data as typeof processedData;
+                }
 
                 // Avoid duplicating `message`: handlers often return `{ message: '…' }`; that already
                 // appears under `data`, so the envelope should not repeat it.

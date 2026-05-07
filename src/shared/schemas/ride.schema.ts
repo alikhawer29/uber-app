@@ -134,6 +134,14 @@ export class Ride {
     /** Stripe PaymentIntent id after card charge on completion */
     @Prop({ type: String, default: null })
     stripePaymentIntentId?: string | null;
+
+    /** Cash physically collected from passenger (cash rides); optional tip/overpay captured here */
+    @Prop({ type: Number, default: null, min: 0 })
+    cashCollectedAmount?: number | null;
+
+    /** True after passenger settlement + driver wallet credit succeeded */
+    @Prop({ type: Boolean, default: false })
+    riderEarningCredited?: boolean;
 }
 
 export const RideSchema = SchemaFactory.createForClass(Ride);

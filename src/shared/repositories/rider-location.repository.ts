@@ -38,6 +38,20 @@ export class RiderLocationRepository extends BaseRepository<RiderLocationDocumen
             .exec();
     }
 
+    /**
+     * Toggle online/offline without changing coordinates. Fails if the rider has never sent a location.
+     */
+    async setIsOnline(riderId: string, isOnline: boolean): Promise<RiderLocationDocument | null> {
+        if (!Types.ObjectId.isValid(riderId)) return null;
+        return this.model
+            .findOneAndUpdate(
+                { riderId: new Types.ObjectId(riderId) },
+                { $set: { isOnline } },
+                { new: true },
+            )
+            .exec();
+    }
+
     async findOnlineRidersWithinKm(params: { latitude: number; longitude: number; radiusKm: number }) {
         const radiusRadians = params.radiusKm / 6378.1;
         return this.model

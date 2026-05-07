@@ -27,6 +27,7 @@ import { AdminContactUsController } from './controllers/admin-contact-us.control
 import { AdminContactUsService } from './services/admin-contact-us.service';
 import { AdminPromotionsController } from './controllers/admin-promotions.controller';
 import { AdminPromotionsService } from './services/admin-promotions.service';
+import { AdminNotificationsController } from './controllers/admin-notifications.controller';
 
 @Module({
     imports: [
@@ -61,6 +62,7 @@ import { AdminPromotionsService } from './services/admin-promotions.service';
         AdminUsersController,
         AdminContactUsController,
         AdminPromotionsController,
+        AdminNotificationsController,
     ],
 })
 export class AdminModule {}

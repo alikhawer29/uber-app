@@ -1,6 +1,8 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { Types } from 'mongoose';
-import { RidePaymentStatus, RideStatus } from 'src/common/constants/ride.constants';
+import { RidePaymentStatus, RidePaymentType, RideStatus } from 'src/common/constants/ride.constants';
+import { roundMoney } from 'src/common/utils/geo-pricing.utils';
+import { EndRideDto } from '../dto/end-ride.dto';
 import { RiderLocationRepository } from 'src/shared/repositories/rider-location.repository';
 import { RideRequestRepository } from 'src/shared/repositories/ride-request.repository';
 import { RideRepository } from 'src/shared/repositories/ride.repository';
@@ -96,22 +98,66 @@ export class RiderRidesService {
         return { success: true, data: { status: RideStatus.IN_PROGRESS, startedAt: new Date().toISOString() } };
     }
 
-    async endRide(riderId: string, rideId: string) {
-        const ride = await this.rideRepository.findById(rideId);
+    async endRide(riderId: string, rideId: string, dto: EndRideDto) {
+        let ride = await this.rideRepository.findById(rideId);
         if (!ride || String((ride as any).driverId || '') !== riderId) {
             throw new BadRequestException({ code: 'UNAUTHORIZED', message: 'This ride was not assigned to you' });
         }
+
+        if (ride.status === RideStatus.COMPLETED) {
+            const cash = (ride as any).cashCollectedAmount;
+            const earning =
+                ride.paymentType === RidePaymentType.CASH && cash != null ? roundMoney(cash) : ride.totalAmount;
+            return {
+                success: true,
+                data: {
+                    status: RideStatus.COMPLETED,
+                    finalFare: ride.totalAmount,
+                    waitingCharges: 0,
+                    totalEarning: earning,
+                    cashCollectedAmount:
+                        ride.paymentType === RidePaymentType.CASH ? (cash != null ? roundMoney(cash) : null) : null,
+                    completedAt: ((ride as any).endTime || new Date()).toISOString(),
+                    alreadyCompleted: true,
+                },
+            };
+        }
+
         if (ride.status !== RideStatus.IN_PROGRESS) {
             throw new BadRequestException({ code: 'INVALID_RIDE_STATUS', message: 'Ride must be in in_progress status to end' });
         }
 
+        if (ride.paymentType === RidePaymentType.CASH) {
+            if (dto.cashCollectedAmount === undefined || dto.cashCollectedAmount === null) {
+                throw new BadRequestException({
+                    code: 'CASH_AMOUNT_REQUIRED',
+                    message: 'cashCollectedAmount is required when the ride is paid in cash',
+                });
+            }
+        }
+
         const capture = await this.ridePaymentCapture.captureForRideCompletion(ride as any);
+        const credit = await this.ridePaymentCapture.creditRiderForCompletedRide(
+            rideId,
+            riderId,
+            dto.cashCollectedAmount,
+        );
+
+        const cashStored =
+            ride.paymentType === RidePaymentType.CASH && dto.cashCollectedAmount != null
+                ? roundMoney(dto.cashCollectedAmount)
+                : null;
+
         await this.rideRepository.update(rideId, {
             status: RideStatus.COMPLETED,
             endTime: new Date(),
             paymentStatus: RidePaymentStatus.PAID,
             ...(capture?.stripePaymentIntentId ? { stripePaymentIntentId: capture.stripePaymentIntentId } : {}),
+            ...(cashStored != null ? { cashCollectedAmount: cashStored } : {}),
+            riderEarningCredited: true,
         } as any);
+
+        ride = (await this.rideRepository.findById(rideId)) || ride;
 
         this.rideGateway.emitRideStatusToUser(String((ride as any).userId), { rideId, status: RideStatus.COMPLETED });
         return {
@@ -120,10 +166,23 @@ export class RiderRidesService {
                 status: RideStatus.COMPLETED,
                 finalFare: ride.totalAmount,
                 waitingCharges: 0,
-                totalEarning: ride.totalAmount,
+                totalEarning: credit.creditedAmount,
+                cashCollectedAmount: cashStored,
                 completedAt: new Date().toISOString(),
             },
         };
+    }
+
+    async setAvailability(riderId: string, isOnline: boolean) {
+        const loc = await this.riderLocationRepository.setIsOnline(riderId, isOnline);
+        if (!loc) {
+            throw new BadRequestException({
+                code: 'LOCATION_REQUIRED',
+                message:
+                    'Share your location at least once (POST /rider/location) before changing online status.',
+            });
+        }
+        return { success: true, data: { isOnline: loc.isOnline } };
     }
 
     async cancelRide(riderId: string, rideId: string, reason: string) {

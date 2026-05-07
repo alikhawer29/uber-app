@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from 'src/common/decorators/current-user.decorator';
 import { Roles } from 'src/common/decorators/roles.decorator';
@@ -6,6 +6,8 @@ import { UserRole } from 'src/common/constants/user.constants';
 import { RejectRideDto } from '../dto/reject-ride.dto';
 import { CancelRideRiderDto } from '../dto/cancel-ride-rider.dto';
 import { UpdateRiderLocationDto } from '../dto/update-rider-location.dto';
+import { EndRideDto } from '../dto/end-ride.dto';
+import { RiderAvailabilityDto } from '../dto/rider-availability.dto';
 import { RiderRidesService } from '../services/rider-rides.service';
 import { SendRideMessageDto } from 'src/modules/user/dto/send-ride-message.dto';
 
@@ -45,9 +47,17 @@ export class RiderRidesController {
     }
 
     @Post(':rideId/end')
-    @ApiOperation({ summary: 'End ride' })
-    end(@CurrentUser() rider: { id: string }, @Param('rideId') rideId: string) {
-        return this.riderRidesService.endRide(rider.id, rideId);
+    @ApiOperation({
+        summary: 'End ride',
+        description:
+            'Completes payment (wallet/card), credits your driver wallet, and for cash rides requires `cashCollectedAmount` (what the passenger paid).',
+    })
+    end(
+        @CurrentUser() rider: { id: string },
+        @Param('rideId') rideId: string,
+        @Body() dto: EndRideDto,
+    ) {
+        return this.riderRidesService.endRide(rider.id, rideId, dto ?? {});
     }
 
     @Post(':rideId/cancel')
@@ -105,6 +115,16 @@ export class RiderLocationController {
     @ApiOperation({ summary: 'Update rider location' })
     updateLocation(@CurrentUser() rider: { id: string }, @Body() dto: UpdateRiderLocationDto) {
         return this.riderRidesService.updateLocation(rider.id, dto);
+    }
+
+    @Patch('availability')
+    @ApiOperation({
+        summary: 'Go online or offline',
+        description:
+            'You must call POST /rider/location at least once before toggling online. Only online riders receive ride offers.',
+    })
+    setAvailability(@CurrentUser() rider: { id: string }, @Body() dto: RiderAvailabilityDto) {
+        return this.riderRidesService.setAvailability(rider.id, dto.isOnline);
     }
 }
 

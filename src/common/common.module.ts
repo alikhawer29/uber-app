@@ -2,6 +2,8 @@ import { Module, Global } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { PassportModule } from '@nestjs/passport';
 import { EmailService } from './services/email.service';
+import { FirebaseService } from './services/firebase.service';
+import { PushNotificationService } from './services/push-notification.service';
 import { SharedModule } from '../shared/shared.module';
 import { MultipartFormFieldsInterceptor } from './interceptors/multipart-form-fields.interceptor';
 import { RolesGuard } from './guards/roles.guard';
@@ -13,6 +15,8 @@ import { APP_GUARD } from '@nestjs/core';
     imports: [ConfigModule, SharedModule, PassportModule],
     providers: [
         EmailService,
+        FirebaseService,
+        PushNotificationService,
         MultipartFormFieldsInterceptor,
         JwtAuthGuard,
         // Register both guards as APP_GUARD to ensure they run in order
@@ -27,6 +31,6 @@ import { APP_GUARD } from '@nestjs/core';
             useClass: RolesGuard,
         },
     ],
-  exports: [EmailService, JwtAuthGuard, MultipartFormFieldsInterceptor],
+  exports: [EmailService, FirebaseService, PushNotificationService, JwtAuthGuard, MultipartFormFieldsInterceptor],
 })
 export class CommonModule { }

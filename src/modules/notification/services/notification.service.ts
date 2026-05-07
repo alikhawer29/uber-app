@@ -1,5 +1,6 @@
-import { Injectable, Inject, Logger } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
+import { PushNotificationService } from 'src/common/services/push-notification.service';
 import { UserRole } from 'src/common/constants/user.constants';
 import { NotificationRepository } from 'src/shared/repositories/notification.repository';
 import { UserRepository } from 'src/shared/repositories/user.repository';
@@ -17,7 +18,55 @@ export class NotificationService {
         private readonly notificationRepository: NotificationRepository,
         private readonly userRepository: UserRepository,
         private readonly eventEmitter: EventEmitter2,
+        private readonly pushNotificationService: PushNotificationService,
     ) { }
+
+    /** FCM `data` payload values must be strings. */
+    private buildPushDataPayload(
+        notificationId: string,
+        type: NotificationType,
+        extra?: Record<string, unknown>,
+    ): Record<string, string> {
+        const out: Record<string, string> = {
+            notificationId,
+            type,
+        };
+        if (extra && typeof extra === 'object') {
+            try {
+                out.payload = JSON.stringify(extra);
+            } catch {
+                /* ignore */
+            }
+        }
+        return out;
+    }
+
+    private dispatchPushAfterPersist(data: {
+        recipientId: string;
+        title: string;
+        message: string;
+        type: NotificationType;
+        notificationId: string;
+        extra?: Record<string, any>;
+    }): void {
+        const payload = this.buildPushDataPayload(
+            data.notificationId,
+            data.type,
+            data.extra as Record<string, unknown> | undefined,
+        );
+        void this.pushNotificationService
+            .sendToUser(data.recipientId, data.title, data.message, payload)
+            .then((r) => {
+                if (r.successCount === 0 && r.failureCount === 0) {
+                    this.logger.debug(`Push skipped or no tokens for recipient ${data.recipientId}`);
+                }
+            })
+            .catch((err) =>
+                this.logger.warn(
+                    `Push failed for recipient ${data.recipientId}: ${err instanceof Error ? err.message : err}`,
+                ),
+            );
+    }
 
     async createUserNotification(data: {
         title: string;
@@ -32,6 +81,16 @@ export class NotificationService {
 
             // Emit event for real-time notifications
             this.eventEmitter.emit('notification.created', notification);
+
+            const nid = String((notification as any)._id);
+            this.dispatchPushAfterPersist({
+                recipientId: data.recipient,
+                title: data.title,
+                message: data.message,
+                type: data.type,
+                notificationId: nid,
+                extra: data.data,
+            });
 
             this.logger.debug(`Notification created for user ${data.recipient}: ${data.title}`);
             return notification;

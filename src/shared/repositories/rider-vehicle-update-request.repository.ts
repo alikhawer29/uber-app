@@ -73,4 +73,11 @@ export class RiderVehicleUpdateRequestRepository extends BaseRepository<RiderVeh
             ],
         });
     }
+
+    async deleteAllForRiderVehicle(riderVehicleId: string): Promise<void> {
+        if (!Types.ObjectId.isValid(riderVehicleId)) return;
+        await this.model
+            .deleteMany({ riderVehicleId: new Types.ObjectId(riderVehicleId) })
+            .exec();
+    }
 }

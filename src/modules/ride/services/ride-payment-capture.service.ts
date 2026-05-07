@@ -1,8 +1,10 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import Stripe from 'stripe';
+import { Types } from 'mongoose';
 import { RidePaymentStatus, RidePaymentType } from 'src/common/constants/ride.constants';
 import { roundMoney } from 'src/common/utils/geo-pricing.utils';
+import { RideRepository } from 'src/shared/repositories/ride.repository';
 import { UserCardRepository } from 'src/shared/repositories/user-card.repository';
 import { UserRepository } from 'src/shared/repositories/user.repository';
 import { WalletRepository } from 'src/shared/repositories/wallet.repository';
@@ -24,6 +26,7 @@ export class RidePaymentCaptureService {
         private readonly walletTransactionRepository: WalletTransactionRepository,
         private readonly userCardRepository: UserCardRepository,
         private readonly userRepository: UserRepository,
+        private readonly rideRepository: RideRepository,
     ) {
         const secretKey = this.configService.get<string>('stripe.secretKey');
         if (!secretKey) {
@@ -153,5 +156,60 @@ export class RidePaymentCaptureService {
         }
 
         return { stripePaymentIntentId: pi.id };
+    }
+
+    /**
+     * Credits the driver's wallet with fare earnings (wallet/card: booked total; cash: amount collected).
+     * Idempotent using an existing EARNING transaction with note `Ride earning {rideId}`.
+     */
+    async creditRiderForCompletedRide(
+        rideId: string,
+        riderId: string,
+        cashCollectedAmount?: number | null,
+    ): Promise<{ creditedAmount: number }> {
+        const ride = await this.rideRepository.findById(rideId);
+        if (!ride) {
+            throw new BadRequestException({ code: 'RIDE_NOT_FOUND', message: 'Ride not found' });
+        }
+        if (String((ride as any).driverId || '') !== riderId) {
+            throw new BadRequestException({ code: 'UNAUTHORIZED', message: 'This ride is not assigned to you' });
+        }
+
+        const existing = await this.walletTransactionRepository.findRideEarningForRider(riderId, rideId);
+        if (existing) {
+            return { creditedAmount: Math.abs((existing as any).amount ?? 0) };
+        }
+
+        const pt = ride.paymentType as RidePaymentType;
+        let amount = roundMoney((ride as any).totalAmount ?? 0);
+        if (pt === RidePaymentType.CASH) {
+            if (cashCollectedAmount === undefined || cashCollectedAmount === null) {
+                throw new BadRequestException({
+                    code: 'CASH_AMOUNT_REQUIRED',
+                    message: 'cashCollectedAmount is required when the ride is paid in cash',
+                });
+            }
+            amount = roundMoney(cashCollectedAmount);
+        }
+
+        if (amount <= 0) {
+            return { creditedAmount: 0 };
+        }
+
+        const wallet = await this.walletRepository.getOrCreate(riderId, 'USD');
+        if (!wallet) {
+            throw new BadRequestException({ code: 'WALLET_NOT_FOUND', message: 'Could not open rider wallet' });
+        }
+
+        await this.walletRepository.incrementBalance(riderId, amount);
+        await this.walletTransactionRepository.create({
+            userId: new Types.ObjectId(riderId),
+            type: WalletTransactionType.EARNING,
+            amount,
+            currency: (wallet as any).currency ?? 'USD',
+            note: `Ride earning ${rideId}`,
+        } as any);
+
+        return { creditedAmount: amount };
     }
 }

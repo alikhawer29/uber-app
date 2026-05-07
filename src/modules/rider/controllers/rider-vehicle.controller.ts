@@ -2,10 +2,12 @@ import {
     BadRequestException,
     Body,
     Controller,
+    Delete,
     Get,
     HttpCode,
     HttpException,
     HttpStatus,
+    Param,
     Post,
     Req,
     UploadedFiles,
@@ -39,6 +41,27 @@ export class RiderVehicleController {
     @ApiResponse({ status: 200, description: 'Vehicle details' })
     getMyVehicle(@CurrentUser() rider: { id: string }) {
         return this.riderVehicleUpdateService.getMyVehicle(rider.id);
+    }
+
+    @Delete()
+    @ApiOperation({
+        summary: 'Delete latest vehicle',
+        description:
+            'Deletes your most recently registered vehicle. Also removes linked vehicle update requests.',
+    })
+    @ApiResponse({ status: 200, description: 'Vehicle deleted' })
+    deleteLatest(@CurrentUser() rider: { id: string }) {
+        return this.riderVehicleUpdateService.deleteVehicle(rider.id);
+    }
+
+    @Delete(':vehicleId')
+    @ApiOperation({
+        summary: 'Delete vehicle by id',
+        description: 'Deletes the vehicle if it belongs to your account. Removes linked update requests.',
+    })
+    @ApiResponse({ status: 200, description: 'Vehicle deleted' })
+    deleteOne(@CurrentUser() rider: { id: string }, @Param('vehicleId') vehicleId: string) {
+        return this.riderVehicleUpdateService.deleteVehicle(rider.id, vehicleId);
     }
 
     @Post('update-request')

@@ -103,4 +103,28 @@ export class RiderVehicleRepository extends BaseRepository<RiderVehicleDocument>
             )
             .exec();
     }
+
+    /** Deletes one vehicle row only if it belongs to the rider. */
+    async deleteOneOwnedByUser(vehicleId: string, userId: string): Promise<boolean> {
+        if (!Types.ObjectId.isValid(vehicleId) || !Types.ObjectId.isValid(userId)) return false;
+        const res = await this.model
+            .deleteOne({
+                _id: new Types.ObjectId(vehicleId),
+                userId: new Types.ObjectId(userId),
+            })
+            .exec();
+        return res.deletedCount === 1;
+    }
+
+    /** Most recently created vehicle for this user (any approval status). */
+    async findLatestIdForUser(userId: string): Promise<string | null> {
+        if (!Types.ObjectId.isValid(userId)) return null;
+        const doc = await this.model
+            .findOne({ userId: new Types.ObjectId(userId) })
+            .sort({ createdAt: -1 })
+            .select('_id')
+            .lean()
+            .exec();
+        return doc?._id ? String(doc._id) : null;
+    }
 }
