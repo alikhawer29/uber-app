@@ -4,6 +4,7 @@ import { RidePaymentStatus, RidePaymentType, RideStatus } from 'src/common/const
 import { roundMoney } from 'src/common/utils/geo-pricing.utils';
 import { EndRideDto } from '../dto/end-ride.dto';
 import { RiderLocationRepository } from 'src/shared/repositories/rider-location.repository';
+import { RiderVehicleRepository } from 'src/shared/repositories/rider-vehicle.repository';
 import { RideRequestRepository } from 'src/shared/repositories/ride-request.repository';
 import { RideRepository } from 'src/shared/repositories/ride.repository';
 import { RideRequestStatus } from 'src/shared/schemas/ride-request.schema';
@@ -17,6 +18,7 @@ export class RiderRidesService {
         private readonly rideRepository: RideRepository,
         private readonly rideRequestRepository: RideRequestRepository,
         private readonly riderLocationRepository: RiderLocationRepository,
+        private readonly riderVehicleRepository: RiderVehicleRepository,
         private readonly rideGateway: RideGateway,
         private readonly rideMessageRepository: RideMessageRepository,
         private readonly ridePaymentCapture: RidePaymentCaptureService,
@@ -33,11 +35,14 @@ export class RiderRidesService {
             throw new BadRequestException({ code: 'RIDE_NO_LONGER_AVAILABLE', message: 'Ride was cancelled or assigned to another rider' });
         }
 
+        const riderVehicle = await this.riderVehicleRepository.findLatestApprovedByUserIdWithVehicleType(riderId);
+
         // Mark accepted
         await this.rideRequestRepository.setStatus(String((req as any)._id), RideRequestStatus.ACCEPTED);
         await this.rideRepository.update(rideId, {
             status: RideStatus.ACCEPTED,
             driverId: new Types.ObjectId(riderId),
+            vehicleId: riderVehicle?._id ?? null,
         } as any);
 
         // Cancel other pending requests for this ride

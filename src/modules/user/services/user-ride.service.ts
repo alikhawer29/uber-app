@@ -15,6 +15,8 @@ import { FareRepository } from 'src/shared/repositories/fare.repository';
 import { PromoCodeRepository } from 'src/shared/repositories/promo-code.repository';
 import { UserPromotionRepository } from 'src/shared/repositories/user-promotion.repository';
 import { RideRepository } from 'src/shared/repositories/ride.repository';
+import { UserRepository } from 'src/shared/repositories/user.repository';
+import { RiderVehicleRepository } from 'src/shared/repositories/rider-vehicle.repository';
 import { VehicleTypeRepository } from 'src/shared/repositories/vehicle-type.repository';
 import { FareDocument } from 'src/shared/schemas/fare.schema';
 import { PromoDiscountType } from 'src/shared/schemas/promo-code.schema';
@@ -46,6 +48,8 @@ export class UserRideService {
         private readonly fareRepository: FareRepository,
         private readonly vehicleTypeRepository: VehicleTypeRepository,
         private readonly rideRepository: RideRepository,
+        private readonly userRepository: UserRepository,
+        private readonly riderVehicleRepository: RiderVehicleRepository,
         private readonly promoCodeRepository: PromoCodeRepository,
         private readonly userPromotionRepository: UserPromotionRepository,
         private readonly eventEmitter: EventEmitter2,
@@ -479,13 +483,15 @@ export class UserRideService {
         if (!ride) {
             throw new NotFoundException({ code: 'NO_ACTIVE_RIDE', message: 'User has no active ride at this time' });
         }
-        return { success: true, data: { rideId: String((ride as any)._id), status: ride.status, ride } };
+        const enrichedRide = await this.enrichRideForUserResponse(ride);
+        return { success: true, data: { rideId: String((ride as any)._id), status: ride.status, ride: enrichedRide } };
     }
 
     async getRideDetails(userId: string, rideId: string) {
         const ride = await this.rideRepository.findOwnedByUser(rideId, userId);
         if (!ride) throw new NotFoundException({ code: 'RIDE_NOT_FOUND', message: 'Ride not found' });
-        return { success: true, data: { rideId: String((ride as any)._id), ride } };
+        const enrichedRide = await this.enrichRideForUserResponse(ride);
+        return { success: true, data: { rideId: String((ride as any)._id), ride: enrichedRide } };
     }
 
     async cancelRide(userId: string, rideId: string, dto: CancelRideDto) {
@@ -570,20 +576,30 @@ export class UserRideService {
         const page = query.page ?? 1;
         const limit = query.limit ?? 10;
         const result = await this.rideRepository.findByUserId(userId, page, limit, query.status);
-        return {
-            success: true,
-            data: {
-                rides: result.data.map((r) => ({
+        const rides = await Promise.all(
+            result.data.map(async (r) => {
+                const relations = await this.resolveRideRelations(r);
+                return {
                     rideId: String((r as any)._id),
                     status: r.status,
-                    riderName: null,
+                    riderName: relations.riderName,
+                    driverId: this.extractId((r as any).driverId),
+                    driver: relations.driver,
+                    vehicleId: this.extractId((r as any).vehicleId) ?? relations.vehicle?.vehicleId ?? null,
+                    vehicle: relations.vehicle,
                     fare: r.totalAmount,
                     discountedFare: r.totalAmount,
                     date: r.startTime ? new Date(r.startTime).toISOString() : null,
                     mapSnapshot: null,
                     pickupAddress: r.pickupAddress,
                     dropOffAddress: r.dropAddress,
-                })),
+                };
+            }),
+        );
+        return {
+            success: true,
+            data: {
+                rides,
                 pagination: {
                     total: result.total,
                     page: result.page,
@@ -592,6 +608,101 @@ export class UserRideService {
                 },
             },
         };
+    }
+
+    private async enrichRideForUserResponse(ride: any) {
+        const rideData = typeof ride?.toObject === 'function' ? ride.toObject() : { ...ride };
+        const relations = await this.resolveRideRelations(rideData);
+
+        return {
+            ...rideData,
+            driverId: this.extractId(rideData.driverId),
+            vehicleId: this.extractId(rideData.vehicleId) ?? relations.vehicle?.vehicleId ?? null,
+            vehicleTypeId: this.extractId(rideData.vehicleTypeId),
+            riderName: relations.riderName,
+            driver: relations.driver,
+            vehicle: relations.vehicle,
+        };
+    }
+
+    private async resolveRideRelations(ride: any) {
+        const driverId = this.extractId(ride?.driverId);
+        const vehicleId = this.extractId(ride?.vehicleId);
+
+        const [driver, vehicle] = await Promise.all([
+            driverId ? this.userRepository.findById(driverId) : Promise.resolve(null),
+            vehicleId
+                ? this.riderVehicleRepository.findByIdWithRelations(vehicleId)
+                : driverId
+                  ? this.riderVehicleRepository.findLatestApprovedByUserIdWithVehicleType(driverId)
+                  : Promise.resolve(null),
+        ]);
+
+        return {
+            riderName: this.buildFullName(driver),
+            driver: this.mapDriver(driver),
+            vehicle: this.mapVehicle(vehicle),
+        };
+    }
+
+    private mapDriver(driver: any) {
+        if (!driver) return null;
+
+        return {
+            driverId: this.extractId(driver._id) ?? this.extractId(driver.id),
+            firstName: driver.firstName ?? null,
+            lastName: driver.lastName ?? null,
+            fullName: this.buildFullName(driver),
+            email: driver.email ?? null,
+            phone: driver.phone ?? null,
+            avatar: driver.avatar ?? null,
+        };
+    }
+
+    private mapVehicle(vehicle: any) {
+        if (!vehicle) return null;
+
+        const vehicleType = vehicle.vehicleTypeId && typeof vehicle.vehicleTypeId === 'object'
+            ? vehicle.vehicleTypeId
+            : null;
+
+        return {
+            vehicleId: this.extractId(vehicle._id),
+            brandName: vehicle.brandName ?? null,
+            vehicleName: vehicle.vehicleName ?? null,
+            vehicleColor: vehicle.vehicleColor ?? null,
+            licensePlateNumber: vehicle.licensePlateNumber ?? null,
+            approvalStatus: vehicle.approvalStatus ?? null,
+            vehicleImageUrls: vehicle.vehicleImageUrls ?? [],
+            vehicleType: vehicleType
+                ? {
+                      vehicleTypeId: this.extractId(vehicleType._id) ?? this.extractId(vehicleType.id),
+                      name: vehicleType.name ?? null,
+                      facilities: vehicleType.facilities ?? [],
+                      image: vehicleType.image ?? null,
+                  }
+                : null,
+        };
+    }
+
+    private buildFullName(user: any): string | null {
+        if (!user) return null;
+
+        const fullName = [user.firstName, user.lastName]
+            .map((part) => (typeof part === 'string' ? part.trim() : ''))
+            .filter(Boolean)
+            .join(' ')
+            .trim();
+
+        return fullName || null;
+    }
+
+    private extractId(value: any): string | null {
+        if (!value) return null;
+        if (typeof value === 'string') return value;
+        if (typeof value === 'object' && value._id) return String(value._id);
+        if (typeof value === 'object' && value.id) return String(value.id);
+        return String(value);
     }
 
     private computeFareComponents(
