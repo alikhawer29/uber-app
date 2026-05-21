@@ -32,7 +32,12 @@ export class RegisterDto {
     @IsNotEmpty()
     confirmPassword: string;
 
-    @ApiProperty({ example: '+1234567890', required: false })
+    @ApiProperty({ example: '+971', required: false, description: 'Dial code without spaces' })
+    @IsString()
+    @IsOptional()
+    countryCode?: string;
+
+    @ApiProperty({ example: '5642131', required: false, description: 'Local phone number without country code' })
     @IsString()
     @IsOptional()
     phone?: string;

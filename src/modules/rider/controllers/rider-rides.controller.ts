@@ -87,6 +87,12 @@ export class RiderRidesController {
         return this.riderRidesService.history(rider.id, Number(page) || 1, Number(limit) || 10, status);
     }
 
+    @Get(':rideId')
+    @ApiOperation({ summary: 'Get ride details (rider)' })
+    detail(@CurrentUser() rider: { id: string }, @Param('rideId') rideId: string) {
+        return this.riderRidesService.getRideDetails(rider.id, rideId);
+    }
+
     @Get(':rideId/messages')
     @ApiOperation({ summary: 'Get ride messages (rider)' })
     messages(@CurrentUser() rider: { id: string }, @Param('rideId') rideId: string) {

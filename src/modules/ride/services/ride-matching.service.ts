@@ -9,6 +9,7 @@ import { RideStatus } from 'src/common/constants/ride.constants';
 import { RideGateway } from '../gateways/ride.gateway';
 import { UserRepository } from 'src/shared/repositories/user.repository';
 import { UserRole, UserStatus } from 'src/common/constants/user.constants';
+import { RideNotificationService } from './ride-notification.service';
 
 @Injectable()
 export class RideMatchingService {
@@ -20,6 +21,7 @@ export class RideMatchingService {
         private readonly rideRequestRepository: RideRequestRepository,
         private readonly userRepository: UserRepository,
         private readonly rideGateway: RideGateway,
+        private readonly rideNotificationService: RideNotificationService,
     ) { }
 
     @OnEvent(RideEvents.REQUEST_MATCHING)
@@ -65,6 +67,12 @@ export class RideMatchingService {
                     distance: ride.distanceKm,
                     timeout: 30,
                 });
+                void this.rideNotificationService.notifyNewRideRequest(
+                    riderId,
+                    String((ride as any)._id),
+                    ride.pickupAddress,
+                    ride.totalAmount,
+                );
 
                 // For now: send to first eligible rider only
                 return;

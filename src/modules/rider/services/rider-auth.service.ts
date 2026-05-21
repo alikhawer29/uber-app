@@ -21,8 +21,10 @@ import { FileType, FileCategory } from 'src/common/constants/file.constants';
 import { NotificationService } from 'src/modules/notification/services/notification.service';
 import { NotificationType } from 'src/shared/schemas/notification.schema';
 import { sanitizeUserUtils } from 'src/common/utils/sanitize-user-utils';
+import { buildDriverRatingSummary } from 'src/common/utils/driver-rating-display.util';
 import { LoginDto } from 'src/modules/user/dto/login.dto';
 import { UserAuthService } from 'src/modules/user/services/user-auth.service';
+import { RideRepository } from 'src/shared/repositories/ride.repository';
 
 const MAX_IMAGE_BYTES = 3 * 1024 * 1024;
 const ALLOWED_IMAGE_MIME = /^image\/(jpeg|jpg|pjpeg|png)$/i;
@@ -37,6 +39,7 @@ export class RiderAuthService {
         private readonly fileRepository: FileRepository,
         private readonly notificationService: NotificationService,
         private readonly userAuthService: UserAuthService,
+        private readonly rideRepository: RideRepository,
     ) {}
 
     async login(loginDto: LoginDto) {
@@ -64,8 +67,12 @@ export class RiderAuthService {
             user.role,
         );
         const updatedUser = await this.userRepository.findByEmailWithAvatar(email);
+        const ratingStats = await this.rideRepository.aggregateDriverRatingSummary(user._id.toString());
         return {
-            user: sanitizeUserUtils.sanitizeUser(updatedUser),
+            user: {
+                ...sanitizeUserUtils.sanitizeUser(updatedUser),
+                ratings: buildDriverRatingSummary(ratingStats),
+            },
             ...tokens,
         };
     }
@@ -132,6 +139,7 @@ export class RiderAuthService {
                 email: dto.email.toLowerCase().trim(),
                 firstName: dto.firstName.trim(),
                 lastName: dto.lastName.trim(),
+                countryCode: dto.countryCode.trim(),
                 phone: dto.phone.trim(),
                 password: hashedPassword,
                 role: UserRole.RIDER,

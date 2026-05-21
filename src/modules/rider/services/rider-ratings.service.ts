@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { RideRepository } from 'src/shared/repositories/ride.repository';
+import { buildDriverRatingSummary } from 'src/common/utils/driver-rating-display.util';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
@@ -19,8 +20,7 @@ export class RiderRatingsService {
         return {
             success: true,
             data: {
-                averageRating: summary.averageRating,
-                totalReviews: summary.totalReviews,
+                ...buildDriverRatingSummary(summary),
                 ratingStats: summary.ratingStats,
             },
         };

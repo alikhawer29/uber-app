@@ -25,6 +25,8 @@ import { multerConfig } from 'src/config/multer.config';
 import { MulterModule } from '@nestjs/platform-express';
 import { CommonModule } from 'src/common/common.module';
 import { UserPromotionsController } from './controllers/user-promotions.controller';
+import { UserDriverReviewsController } from './controllers/user-driver-reviews.controller';
+import { UserDriverReviewsService } from './services/user-driver-reviews.service';
 
 @Module({
     imports: [
@@ -46,7 +48,7 @@ import { UserPromotionsController } from './controllers/user-promotions.controll
         UserCardsService,
         UserWalletService,
         RideChatService,
-        // imported via SharedModule, injected into UserRideService
+        UserDriverReviewsService,
     ],
     controllers: [
         UserAuthController,
@@ -57,7 +59,8 @@ import { UserPromotionsController } from './controllers/user-promotions.controll
         UserCardsController,
         UserWalletController,
         UserNotificationsController,
+        UserDriverReviewsController,
     ],
-    exports: [UserAuthService, ContactUsService],
+    exports: [UserAuthService, ContactUsService, UserService],
 })
 export class UserModule { }

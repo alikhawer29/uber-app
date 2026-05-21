@@ -14,10 +14,16 @@ export class RiderRegisterDto {
     @MaxLength(100)
     lastName: string;
 
-    @ApiProperty({ example: '+1 555 123 4567' })
+    @ApiProperty({ example: '+971' })
     @IsString()
     @IsNotEmpty()
-    @MaxLength(32)
+    @MaxLength(8)
+    countryCode: string;
+
+    @ApiProperty({ example: '5642131' })
+    @IsString()
+    @IsNotEmpty()
+    @MaxLength(24)
     phone: string;
 
     @ApiProperty({ example: 'jane.rider@example.com' })

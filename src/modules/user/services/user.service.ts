@@ -55,19 +55,28 @@ export class UserService {
                 }
             }
 
-            let updatedUser = await this.userRepository.update(userId, updateProfileDto);
+            const profilePayload = {
+                ...updateProfileDto,
+                ...(updateProfileDto.phone !== undefined
+                    ? { phone: updateProfileDto.phone?.trim() || null }
+                    : {}),
+                ...(updateProfileDto.countryCode !== undefined
+                    ? { countryCode: updateProfileDto.countryCode?.trim() || null }
+                    : {}),
+            };
+
+            let updatedUser = await this.userRepository.update(userId, profilePayload);
             if (avatar) {
                 await this.handleAvatarUpload(user, avatar);
 
                 // Update user with new avatar URL
                 const avatarUrl = `/uploads/${avatar.filename}`;
                 updatedUser = await this.userRepository.update(userId, {
-                    ...updateProfileDto,
-                    avatar: avatarUrl
+                    ...profilePayload,
+                    avatar: avatarUrl,
                 });
             } else {
-                // Update without avatar
-                updatedUser = await this.userRepository.update(userId, updateProfileDto);
+                updatedUser = await this.userRepository.update(userId, profilePayload);
             }
             if (!updatedUser) {
                 throw new InternalServerErrorException('Failed to update user profile');

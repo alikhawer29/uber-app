@@ -23,7 +23,7 @@ export class UserAuthService {
     ) { }
 
     async register(registerDto: RegisterDto, avatar?: Express.Multer.File) {
-        const { email, password, confirmPassword, firstName, lastName, phone, address } = registerDto;
+        const { email, password, confirmPassword, firstName, lastName, phone, countryCode, address } = registerDto;
 
         if (password !== confirmPassword) {
             throw new BadRequestException('Passwords do not match');
@@ -42,7 +42,8 @@ export class UserAuthService {
             firstName,
             lastName,
             password: hashedPassword,
-            phone,
+            phone: phone?.trim() || undefined,
+            countryCode: countryCode?.trim() || undefined,
             address,
         });
 

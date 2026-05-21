@@ -23,6 +23,16 @@ export enum NotificationType {
     RIDER_VEHICLE_UPDATE_APPROVED = 'rider_vehicle_update_approved',
     /** Rider’s vehicle detail update request was rejected (rider recipient). */
     RIDER_VEHICLE_UPDATE_REJECTED = 'rider_vehicle_update_rejected',
+    RIDE_BOOKED = 'ride_booked',
+    RIDE_SCHEDULED = 'ride_scheduled',
+    RIDE_REQUEST = 'ride_request',
+    RIDE_ACCEPTED = 'ride_accepted',
+    RIDE_ARRIVED = 'ride_arrived',
+    RIDE_STARTED = 'ride_started',
+    RIDE_COMPLETED = 'ride_completed',
+    RIDE_CANCELLED = 'ride_cancelled',
+    RIDE_REVIEW_RECEIVED = 'ride_review_received',
+    RIDE_COMPLAINT = 'ride_complaint',
 }
 
 export enum NotificationStatus {

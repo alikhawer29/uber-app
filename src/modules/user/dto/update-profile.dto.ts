@@ -17,7 +17,12 @@ export class UpdateProfileDto {
     @IsOptional()
     lastName?: string;
 
-    @ApiProperty({ example: '+1234567890', required: false })
+    @ApiProperty({ example: '+971', required: false })
+    @IsString()
+    @IsOptional()
+    countryCode?: string;
+
+    @ApiProperty({ example: '5642131', required: false })
     @IsString()
     @IsOptional()
     phone?: string;

@@ -82,6 +82,9 @@ export class User {
     @Prop({ type: String })
     phone?: string;
 
+    @Prop({ type: String, trim: true })
+    countryCode?: string;
+
     @Prop({ type: String })
     address?: string;
 

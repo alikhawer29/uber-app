@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { Types } from 'mongoose';
 import { RidePaymentStatus, RidePaymentType, RideStatus } from 'src/common/constants/ride.constants';
 import { roundMoney } from 'src/common/utils/geo-pricing.utils';
@@ -12,6 +12,11 @@ import { RideGateway } from 'src/modules/ride/gateways/ride.gateway';
 import { RidePaymentCaptureService } from 'src/modules/ride/services/ride-payment-capture.service';
 import { RideMessageRepository } from 'src/shared/repositories/ride-message.repository';
 import { RideMessageSenderType } from 'src/shared/schemas/ride-message.schema';
+import { RideNotificationService } from 'src/modules/ride/services/ride-notification.service';
+import { UserRepository } from 'src/shared/repositories/user.repository';
+import { resolveRideDisplayStatus } from 'src/common/utils/ride-display-status.util';
+import { RideCancelledBy } from 'src/common/constants/ride.constants';
+
 @Injectable()
 export class RiderRidesService {
     constructor(
@@ -22,6 +27,8 @@ export class RiderRidesService {
         private readonly rideGateway: RideGateway,
         private readonly rideMessageRepository: RideMessageRepository,
         private readonly ridePaymentCapture: RidePaymentCaptureService,
+        private readonly rideNotificationService: RideNotificationService,
+        private readonly userRepository: UserRepository,
     ) { }
 
     async acceptRide(riderId: string, rideId: string) {
@@ -48,12 +55,22 @@ export class RiderRidesService {
         // Cancel other pending requests for this ride
         await this.rideRequestRepository.cancelAllForRide(rideId);
 
+        const rider = await this.userRepository.findById(riderId);
+        const riderName = rider
+            ? `${(rider.firstName || '').trim()} ${(rider.lastName || '').trim()}`.trim() || 'Driver'
+            : 'Driver';
+
         this.rideGateway.emitRideStatusToUser(String((ride as any).userId), {
             rideId,
             status: RideStatus.ACCEPTED,
-            riderName: 'Rider',
+            riderName,
             estimatedArrival: 3,
         });
+        void this.rideNotificationService.notifyRideAccepted(
+            String((ride as any).userId),
+            rideId,
+            riderName,
+        );
 
         return {
             success: true,
@@ -87,6 +104,7 @@ export class RiderRidesService {
         }
         await this.rideRepository.update(rideId, { status: RideStatus.ARRIVED } as any);
         this.rideGateway.emitRideStatusToUser(String((ride as any).userId), { rideId, status: RideStatus.ARRIVED });
+        void this.rideNotificationService.notifyRideArrived(String((ride as any).userId), rideId);
         return { success: true, data: { status: RideStatus.ARRIVED, arrivedAt: new Date().toISOString() } };
     }
 
@@ -100,6 +118,7 @@ export class RiderRidesService {
         }
         await this.rideRepository.update(rideId, { status: RideStatus.IN_PROGRESS } as any);
         this.rideGateway.emitRideStatusToUser(String((ride as any).userId), { rideId, status: RideStatus.IN_PROGRESS });
+        void this.rideNotificationService.notifyRideStarted(String((ride as any).userId), rideId);
         return { success: true, data: { status: RideStatus.IN_PROGRESS, startedAt: new Date().toISOString() } };
     }
 
@@ -165,6 +184,11 @@ export class RiderRidesService {
         ride = (await this.rideRepository.findById(rideId)) || ride;
 
         this.rideGateway.emitRideStatusToUser(String((ride as any).userId), { rideId, status: RideStatus.COMPLETED });
+        void this.rideNotificationService.notifyRideCompleted(
+            String((ride as any).userId),
+            riderId,
+            rideId,
+        );
         return {
             success: true,
             data: {
@@ -198,8 +222,17 @@ export class RiderRidesService {
         if (![RideStatus.ACCEPTED, RideStatus.ARRIVED].includes(ride.status as any)) {
             throw new BadRequestException({ code: 'INVALID_RIDE_STATUS', message: 'Cannot cancel a ride that is already in progress or completed' });
         }
-        await this.rideRepository.update(rideId, { status: RideStatus.CANCELLED, cancelledBy: 'driver', cancelReason: reason.trim() } as any);
+        await this.rideRepository.update(rideId, {
+            status: RideStatus.CANCELLED,
+            cancelledBy: RideCancelledBy.DRIVER,
+            cancelReason: reason.trim(),
+        } as any);
         this.rideGateway.emitRideStatusToUser(String((ride as any).userId), { rideId, status: RideStatus.CANCELLED });
+        void this.rideNotificationService.notifyRideCancelledByDriver(
+            String((ride as any).userId),
+            riderId,
+            rideId,
+        );
         return { success: true, message: 'Ride cancelled' };
     }
 
@@ -214,7 +247,126 @@ export class RiderRidesService {
             status: { $in: [RideStatus.ACCEPTED, RideStatus.ARRIVED, RideStatus.IN_PROGRESS] },
         } as any);
         if (!ride) throw new NotFoundException({ code: 'NO_ACTIVE_RIDE', message: 'No active ride found for this rider' });
-        return { success: true, data: { rideId: String((ride as any)._id), status: ride.status, ride } };
+        const enrichedRide = await this.enrichRideForRiderResponse(ride);
+        return {
+            success: true,
+            data: { rideId: String((ride as any)._id), status: ride.status, ride: enrichedRide },
+        };
+    }
+
+    async getRideDetails(riderId: string, rideId: string) {
+        const ride = await this.rideRepository.findById(rideId);
+        if (!ride) {
+            throw new NotFoundException({ code: 'RIDE_NOT_FOUND', message: 'Ride not found' });
+        }
+        await this.assertRiderCanAccessRide(riderId, ride);
+        const enrichedRide = await this.enrichRideForRiderResponse(ride);
+        return {
+            success: true,
+            data: { rideId: String((ride as any)._id), ride: enrichedRide },
+        };
+    }
+
+    private async assertRiderCanAccessRide(riderId: string, ride: any) {
+        const assignedDriverId = this.extractId(ride?.driverId);
+        if (assignedDriverId === riderId) {
+            return;
+        }
+        const request = await this.rideRequestRepository.findOne({
+            rideId: new Types.ObjectId(String(ride._id)),
+            riderId: new Types.ObjectId(riderId),
+        } as any);
+        if (!request) {
+            throw new ForbiddenException({
+                code: 'UNAUTHORIZED',
+                message: 'You are not assigned to this ride',
+            });
+        }
+    }
+
+    private async enrichRideForRiderResponse(ride: any) {
+        const rideData = typeof ride?.toObject === 'function' ? ride.toObject() : { ...ride };
+        const passengerId = this.extractId(rideData.userId);
+        const vehicleId = this.extractId(rideData.vehicleId);
+        const driverId = this.extractId(rideData.driverId);
+
+        const [passenger, vehicle] = await Promise.all([
+            passengerId ? this.userRepository.findById(passengerId) : Promise.resolve(null),
+            vehicleId
+                ? this.riderVehicleRepository.findByIdWithRelations(vehicleId)
+                : driverId
+                  ? this.riderVehicleRepository.findLatestApprovedByUserIdWithVehicleType(driverId)
+                  : Promise.resolve(null),
+        ]);
+
+        return {
+            ...rideData,
+            rideId: String(rideData._id ?? rideData.id),
+            displayStatus: resolveRideDisplayStatus(rideData.status, rideData.cancelledBy),
+            userId: passengerId,
+            driverId,
+            vehicleId: vehicleId ?? this.extractId(vehicle?._id) ?? null,
+            vehicleTypeId: this.extractId(rideData.vehicleTypeId),
+            passengerName: this.buildFullName(passenger),
+            passenger: this.mapPassenger(passenger),
+            vehicle: this.mapVehicle(vehicle),
+            dropOffAddress: rideData.dropAddress ?? rideData.dropOffAddress ?? null,
+        };
+    }
+
+    private mapPassenger(passenger: any) {
+        if (!passenger) return null;
+        return {
+            userId: this.extractId(passenger._id) ?? this.extractId(passenger.id),
+            firstName: passenger.firstName ?? null,
+            lastName: passenger.lastName ?? null,
+            fullName: this.buildFullName(passenger),
+            email: passenger.email ?? null,
+            phone: passenger.phone ?? null,
+            countryCode: passenger.countryCode ?? null,
+            avatar: passenger.avatar ?? null,
+        };
+    }
+
+    private mapVehicle(vehicle: any) {
+        if (!vehicle) return null;
+        const vehicleType =
+            vehicle.vehicleTypeId && typeof vehicle.vehicleTypeId === 'object' ? vehicle.vehicleTypeId : null;
+        return {
+            vehicleId: this.extractId(vehicle._id),
+            brandName: vehicle.brandName ?? null,
+            vehicleName: vehicle.vehicleName ?? null,
+            vehicleColor: vehicle.vehicleColor ?? null,
+            licensePlateNumber: vehicle.licensePlateNumber ?? null,
+            approvalStatus: vehicle.approvalStatus ?? null,
+            vehicleImageUrls: vehicle.vehicleImageUrls ?? [],
+            vehicleType: vehicleType
+                ? {
+                      vehicleTypeId: this.extractId(vehicleType._id) ?? this.extractId(vehicleType.id),
+                      name: vehicleType.name ?? null,
+                      facilities: vehicleType.facilities ?? [],
+                      image: vehicleType.image ?? null,
+                  }
+                : null,
+        };
+    }
+
+    private buildFullName(user: any): string | null {
+        if (!user) return null;
+        const fullName = [user.firstName, user.lastName]
+            .map((part) => (typeof part === 'string' ? part.trim() : ''))
+            .filter(Boolean)
+            .join(' ')
+            .trim();
+        return fullName || null;
+    }
+
+    private extractId(value: any): string | null {
+        if (!value) return null;
+        if (typeof value === 'string') return value;
+        if (typeof value === 'object' && value._id) return String(value._id);
+        if (typeof value === 'object' && value.id) return String(value.id);
+        return String(value);
     }
 
     async history(riderId: string, page: number, limit: number, status: 'completed' | 'cancelled' | 'all') {
@@ -222,7 +374,25 @@ export class RiderRidesService {
         if (status === 'completed') conditions.status = RideStatus.COMPLETED;
         if (status === 'cancelled') conditions.status = RideStatus.CANCELLED;
         const result = await this.rideRepository.paginate(page, limit, conditions, { sort: { createdAt: -1 } });
-        return { success: true, data: { rides: result.data, pagination: { total: result.total, page: result.page, limit: result.limit, totalPages: result.totalPages } } };
+        const rides = result.data.map((r: any) => {
+            const plain = typeof r?.toObject === 'function' ? r.toObject() : { ...r };
+            return {
+                ...plain,
+                displayStatus: resolveRideDisplayStatus(plain.status, plain.cancelledBy),
+            };
+        });
+        return {
+            success: true,
+            data: {
+                rides,
+                pagination: {
+                    total: result.total,
+                    page: result.page,
+                    limit: result.limit,
+                    totalPages: result.totalPages,
+                },
+            },
+        };
     }
 
     async listMessages(riderId: string, rideId: string) {

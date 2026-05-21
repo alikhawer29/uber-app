@@ -36,6 +36,9 @@ import { RideEvents } from '../events/ride.events';
 import { RideComplaintRepository } from 'src/shared/repositories/ride-complaint.repository';
 import { RideComplaintDto } from '../dto/ride-complaint.dto';
 import { resolveScheduledAtFromPayload } from '../utils/resolve-scheduled-at.util';
+import { RideNotificationService } from 'src/modules/ride/services/ride-notification.service';
+import { resolveRideDisplayStatus } from 'src/common/utils/ride-display-status.util';
+import { RideCancelledBy } from 'src/common/constants/ride.constants';
 
 const SCHEDULE_BUFFER_MS = 60_000;
 const SCHEDULE_MIN_MS = 15 * 60_000;
@@ -54,6 +57,7 @@ export class UserRideService {
         private readonly userPromotionRepository: UserPromotionRepository,
         private readonly eventEmitter: EventEmitter2,
         private readonly rideComplaintRepository: RideComplaintRepository,
+        private readonly rideNotificationService: RideNotificationService,
     ) {}
 
     async quote(query: RideQuoteQueryDto) {
@@ -398,15 +402,21 @@ export class UserRideService {
             cardId: dto.cardId ? new Types.ObjectId(dto.cardId) : null,
         } as any);
 
+        const rideId = String((updated as any)?._id ?? (ride as any)._id);
         this.eventEmitter.emit(RideEvents.REQUEST_MATCHING, {
-            rideId: String((updated as any)?._id ?? (ride as any)._id),
+            rideId,
             userId,
         });
+        void this.rideNotificationService.notifyRideBooked(
+            userId,
+            rideId,
+            (updated as any).pickupAddress,
+        );
 
         return {
             success: true,
             data: {
-                rideId: String((updated as any)?._id ?? (ride as any)._id),
+                rideId,
                 status: RideStatus.SEARCHING,
                 fare: roundMoney((updated as any).baseFare + (updated as any).distanceFare + (updated as any).timeFare + (updated as any).tax),
                 discountedFare: (updated as any).totalAmount,
@@ -455,16 +465,22 @@ export class UserRideService {
             cardId: dto.cardId ? new Types.ObjectId(dto.cardId) : null,
         } as any);
 
+        const rideId = String((updated as any)?._id ?? (ride as any)._id);
         this.eventEmitter.emit(RideEvents.STATUS_UPDATED, {
-            rideId: String((updated as any)?._id ?? (ride as any)._id),
+            rideId,
             status: RideStatus.SCHEDULED,
             userId,
         });
+        void this.rideNotificationService.notifyRideScheduled(
+            userId,
+            rideId,
+            scheduled.toISOString(),
+        );
 
         return {
             success: true,
             data: {
-                rideId: String((updated as any)?._id ?? (ride as any)._id),
+                rideId,
                 status: RideStatus.SCHEDULED,
                 scheduledAt: scheduled.toISOString(),
                 fare: (updated as any).totalAmount,
@@ -518,11 +534,15 @@ export class UserRideService {
         const cancellationFeeApplied = ride.status === RideStatus.ACCEPTED;
         const cancellationFee = cancellationFeeApplied ? roundMoney(fareBeforeDiscount * 0.01) : 0;
 
-        await this.rideRepository.update(String((ride as any)._id), {
+        const rideObjectId = String((ride as any)._id);
+        await this.rideRepository.update(rideObjectId, {
             status: RideStatus.CANCELLED,
-            cancelledBy: 'user',
+            cancelledBy: RideCancelledBy.USER,
             cancelReason: dto.reason === CancelReason.OTHER ? `${dto.reason}:${dto.reasonNote?.trim()}` : dto.reason,
         } as any);
+
+        const driverId = this.extractId((ride as any).driverId);
+        void this.rideNotificationService.notifyRideCancelledByUser(userId, driverId, rideObjectId);
 
         return {
             success: true,
@@ -546,10 +566,16 @@ export class UserRideService {
             throw new BadRequestException({ code: 'ALREADY_REVIEWED', message: 'A review has already been submitted for this ride' });
         }
 
-        await this.rideRepository.update(String((ride as any)._id), {
+        const rideObjectId = String((ride as any)._id);
+        await this.rideRepository.update(rideObjectId, {
             ratingByUser: dto.rating,
             reviewByUser: dto.review?.trim() || null,
         } as any);
+
+        const driverId = this.extractId((ride as any).driverId);
+        if (driverId) {
+            void this.rideNotificationService.notifyReviewReceived(driverId, rideObjectId, dto.rating);
+        }
 
         return { success: true, message: 'Review submitted successfully' };
     }
@@ -569,6 +595,8 @@ export class UserRideService {
             message: dto.message.trim(),
         } as any);
 
+        void this.rideNotificationService.notifyRideComplaint(rideId, userId);
+
         return { success: true, message: 'Complaint submitted successfully', data: { complaintId: 'created' } };
     }
 
@@ -582,6 +610,7 @@ export class UserRideService {
                 return {
                     rideId: String((r as any)._id),
                     status: r.status,
+                    displayStatus: resolveRideDisplayStatus(r.status, (r as any).cancelledBy),
                     riderName: relations.riderName,
                     driverId: this.extractId((r as any).driverId),
                     driver: relations.driver,
@@ -616,6 +645,7 @@ export class UserRideService {
 
         return {
             ...rideData,
+            displayStatus: resolveRideDisplayStatus(rideData.status, rideData.cancelledBy),
             driverId: this.extractId(rideData.driverId),
             vehicleId: this.extractId(rideData.vehicleId) ?? relations.vehicle?.vehicleId ?? null,
             vehicleTypeId: this.extractId(rideData.vehicleTypeId),

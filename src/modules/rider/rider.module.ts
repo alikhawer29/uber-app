@@ -14,11 +14,13 @@ import { RiderLocationController, RiderRidesController } from './controllers/rid
 import { RiderNotificationsController } from './controllers/rider-notifications.controller';
 import { RiderWalletController } from './controllers/rider-wallet.controller';
 import { RiderRatingsController } from './controllers/rider-ratings.controller';
+import { RiderProfileController } from './controllers/rider-profile.controller';
 import { RiderAuthService } from './services/rider-auth.service';
 import { RiderVehicleUpdateService } from './services/rider-vehicle-update.service';
 import { RiderRidesService } from './services/rider-rides.service';
 import { RiderWalletService } from './services/rider-wallet.service';
 import { RiderRatingsService } from './services/rider-ratings.service';
+import { RiderProfileService } from './services/rider-profile.service';
 
 @Module({
     imports: [
@@ -39,8 +41,23 @@ import { RiderRatingsService } from './services/rider-ratings.service';
         RiderNotificationsController,
         RiderWalletController,
         RiderRatingsController,
+        RiderProfileController,
     ],
-    providers: [RiderAuthService, RiderVehicleUpdateService, RiderRidesService, RiderWalletService, RiderRatingsService],
-    exports: [RiderAuthService, RiderVehicleUpdateService, RiderRidesService, RiderWalletService, RiderRatingsService],
+    providers: [
+        RiderAuthService,
+        RiderVehicleUpdateService,
+        RiderRidesService,
+        RiderWalletService,
+        RiderRatingsService,
+        RiderProfileService,
+    ],
+    exports: [
+        RiderAuthService,
+        RiderVehicleUpdateService,
+        RiderRidesService,
+        RiderWalletService,
+        RiderRatingsService,
+        RiderProfileService,
+    ],
 })
 export class RiderModule {}
