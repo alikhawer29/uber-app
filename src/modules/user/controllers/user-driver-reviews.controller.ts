@@ -13,11 +13,20 @@ export class UserDriverReviewsController {
 
     @Get(':driverId/ratings')
     @ApiOperation({
-        summary: 'Driver rating summary',
-        description: 'Average rating, total reviews, and star histogram for a driver.',
+        summary: 'Driver ratings, reviews, and stats',
+        description:
+            'Average rating, histogram, and paginated passenger reviews (all users who rated this driver).',
     })
-    summary(@Param('driverId') driverId: string) {
-        return this.userDriverReviewsService.getSummary(driverId);
+    summary(
+        @Param('driverId') driverId: string,
+        @Query('page') page = '1',
+        @Query('limit') limit = '50',
+    ) {
+        return this.userDriverReviewsService.getSummary(
+            driverId,
+            Number(page) || 1,
+            Number(limit) || 50,
+        );
     }
 
     @Get(':driverId/reviews')

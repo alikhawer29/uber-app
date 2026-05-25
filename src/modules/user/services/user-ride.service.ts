@@ -39,6 +39,8 @@ import { resolveScheduledAtFromPayload } from '../utils/resolve-scheduled-at.uti
 import { RideNotificationService } from 'src/modules/ride/services/ride-notification.service';
 import { resolveRideDisplayStatus } from 'src/common/utils/ride-display-status.util';
 import { RideCancelledBy } from 'src/common/constants/ride.constants';
+import { buildDriverRatingSummary } from 'src/common/utils/driver-rating-display.util';
+import { DriverRatingStats } from 'src/shared/repositories/ride.repository';
 
 const SCHEDULE_BUFFER_MS = 60_000;
 const SCHEDULE_MIN_MS = 15 * 60_000;
@@ -604,16 +606,35 @@ export class UserRideService {
         const page = query.page ?? 1;
         const limit = query.limit ?? 10;
         const result = await this.rideRepository.findByUserId(userId, page, limit, query.status);
+
+        const driverIds = [
+            ...new Set(
+                result.data
+                    .map((r) => this.extractId((r as any).driverId))
+                    .filter((id): id is string => !!id),
+            ),
+        ];
+        const ratingsByDriver = await this.rideRepository.aggregateDriverRatingSummaries(driverIds);
+
         const rides = await Promise.all(
             result.data.map(async (r) => {
                 const relations = await this.resolveRideRelations(r);
+                const driverId = this.extractId((r as any).driverId);
+                const driverRatings = driverId
+                    ? this.buildDriverRatingsPayload(ratingsByDriver.get(driverId))
+                    : null;
+                const driver = relations.driver
+                    ? { ...relations.driver, ratings: driverRatings }
+                    : null;
+
                 return {
                     rideId: String((r as any)._id),
                     status: r.status,
                     displayStatus: resolveRideDisplayStatus(r.status, (r as any).cancelledBy),
                     riderName: relations.riderName,
-                    driverId: this.extractId((r as any).driverId),
-                    driver: relations.driver,
+                    driverId,
+                    driver,
+                    driverRatings,
                     vehicleId: this.extractId((r as any).vehicleId) ?? relations.vehicle?.vehicleId ?? null,
                     vehicle: relations.vehicle,
                     fare: r.totalAmount,
@@ -643,14 +664,26 @@ export class UserRideService {
         const rideData = typeof ride?.toObject === 'function' ? ride.toObject() : { ...ride };
         const relations = await this.resolveRideRelations(rideData);
 
+        const driverId = this.extractId(rideData.driverId);
+        let driver: Record<string, unknown> | null = relations.driver;
+        let driverRatings = null as ReturnType<typeof buildDriverRatingSummary> | null;
+        if (driverId) {
+            const stats = await this.rideRepository.aggregateDriverRatingSummary(driverId);
+            driverRatings = buildDriverRatingSummary(stats);
+            if (driver) {
+                driver = { ...driver, ratings: driverRatings };
+            }
+        }
+
         return {
             ...rideData,
             displayStatus: resolveRideDisplayStatus(rideData.status, rideData.cancelledBy),
-            driverId: this.extractId(rideData.driverId),
+            driverId,
             vehicleId: this.extractId(rideData.vehicleId) ?? relations.vehicle?.vehicleId ?? null,
             vehicleTypeId: this.extractId(rideData.vehicleTypeId),
             riderName: relations.riderName,
-            driver: relations.driver,
+            driver,
+            driverRatings,
             vehicle: relations.vehicle,
         };
     }
@@ -673,6 +706,15 @@ export class UserRideService {
             driver: this.mapDriver(driver),
             vehicle: this.mapVehicle(vehicle),
         };
+    }
+
+    private buildDriverRatingsPayload(stats: DriverRatingStats | undefined) {
+        const summary = stats ?? {
+            averageRating: 0,
+            totalReviews: 0,
+            ratingStats: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 },
+        };
+        return buildDriverRatingSummary(summary);
     }
 
     private mapDriver(driver: any) {

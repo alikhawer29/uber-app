@@ -108,6 +108,58 @@ export class RideRepository extends BaseRepository<RideDocument> {
         };
     }
 
+    /** Batch rating summaries for many drivers (e.g. ride list pages). */
+    async aggregateDriverRatingSummaries(driverIds: string[]): Promise<Map<string, DriverRatingStats>> {
+        const empty: DriverRatingStats = {
+            averageRating: 0,
+            totalReviews: 0,
+            ratingStats: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 },
+        };
+        const unique = [...new Set(driverIds.filter((id) => Types.ObjectId.isValid(id)))];
+        const result = new Map<string, DriverRatingStats>();
+        for (const id of unique) {
+            result.set(id, { ...empty, ratingStats: { ...empty.ratingStats } });
+        }
+        if (!unique.length) return result;
+
+        const oids = unique.map((id) => new Types.ObjectId(id));
+        const baseMatch = {
+            driverId: { $in: oids },
+            ratingByUser: { $gte: 1, $lte: 5 },
+            status: RideStatus.COMPLETED,
+        } as const;
+
+        const aggs = await this.model
+            .aggregate<{ _id: Types.ObjectId; avg: number; count: number }>([
+                { $match: baseMatch },
+                { $group: { _id: '$driverId', avg: { $avg: '$ratingByUser' }, count: { $sum: 1 } } },
+            ])
+            .exec();
+
+        const hist = await this.model
+            .aggregate<{ _id: { driverId: Types.ObjectId; star: number }; c: number }>([
+                { $match: baseMatch },
+                { $group: { _id: { driverId: '$driverId', star: '$ratingByUser' }, c: { $sum: 1 } } },
+            ])
+            .exec();
+
+        for (const row of aggs) {
+            const id = String(row._id);
+            const stats = result.get(id) ?? { ...empty, ratingStats: { ...empty.ratingStats } };
+            stats.averageRating = row.count ? Math.round(row.avg * 10) / 10 : 0;
+            stats.totalReviews = row.count ?? 0;
+            result.set(id, stats);
+        }
+        for (const row of hist) {
+            const id = String(row._id.driverId);
+            const stats = result.get(id);
+            if (!stats) continue;
+            const star = Math.round(row._id.star) as 1 | 2 | 3 | 4 | 5;
+            if (star >= 1 && star <= 5) stats.ratingStats[star] = row.c;
+        }
+        return result;
+    }
+
     async paginatePassengerReviewsForDriver(driverId: string, page: number, limit: number) {
         if (!Types.ObjectId.isValid(driverId)) {
             return this.paginate(page, limit, { _id: new Types.ObjectId('000000000000000000000000') } as any);
