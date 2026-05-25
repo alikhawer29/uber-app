@@ -3,7 +3,7 @@ import { InjectModel } from '@nestjs/mongoose';
 import { FilterQuery, Model, Types } from 'mongoose';
 import { BaseRepository } from './base.repository';
 import { Ride, RideDocument } from '../schemas/ride.schema';
-import { RideStatus } from 'src/common/constants/ride.constants';
+import { RideCancelledBy, RideStatus } from 'src/common/constants/ride.constants';
 
 export type DriverRatingStats = {
     averageRating: number;
@@ -39,21 +39,103 @@ export class RideRepository extends BaseRepository<RideDocument> {
         return this.paginate(page, limit, conditions, { sort: { createdAt: -1 } });
     }
 
-    async findActiveForUser(userId: string): Promise<RideDocument | null> {
+    /**
+     * Auto-cancel `searching` rides older than maxAgeMs (no driver assigned).
+     */
+    async expireStaleSearchingRidesForUser(userId: string, maxAgeMs: number): Promise<number> {
+        if (!Types.ObjectId.isValid(userId) || maxAgeMs <= 0) return 0;
+        const cutoff = new Date(Date.now() - maxAgeMs);
+        const res = await this.model
+            .updateMany(
+                {
+                    userId: new Types.ObjectId(userId),
+                    status: RideStatus.SEARCHING,
+                    createdAt: { $lt: cutoff },
+                } as any,
+                {
+                    $set: {
+                        status: RideStatus.CANCELLED,
+                        cancelledBy: RideCancelledBy.USER,
+                        cancelReason: 'no_driver_found',
+                    },
+                },
+            )
+            .exec();
+        return res.modifiedCount ?? 0;
+    }
+
+    /**
+     * Cancel other open bookings when the user starts a new one.
+     */
+    async closeSupersededUserRides(userId: string, exceptRideId?: string): Promise<number> {
+        if (!Types.ObjectId.isValid(userId)) return 0;
+        const conditions: FilterQuery<RideDocument> = {
+            userId: new Types.ObjectId(userId) as any,
+            status: {
+                $in: [RideStatus.SEARCHING, RideStatus.SCHEDULED, RideStatus.PENDING],
+            },
+        };
+        if (exceptRideId && Types.ObjectId.isValid(exceptRideId)) {
+            conditions._id = { $ne: new Types.ObjectId(exceptRideId) } as any;
+        }
+        const res = await this.model
+            .updateMany(conditions as any, {
+                $set: {
+                    status: RideStatus.CANCELLED,
+                    cancelledBy: RideCancelledBy.USER,
+                    cancelReason: 'superseded_by_new_booking',
+                },
+            })
+            .exec();
+        return res.modifiedCount ?? 0;
+    }
+
+    /**
+     * Returns the user's current meaningful active ride (excludes stale searching).
+     */
+    async findActiveForUser(userId: string, searchingMaxAgeMs = 30 * 60_000): Promise<RideDocument | null> {
         if (!Types.ObjectId.isValid(userId)) return null;
+        const oid = new Types.ObjectId(userId);
+        const searchingCutoff = new Date(Date.now() - searchingMaxAgeMs);
+
+        const inTripStatuses = [
+            RideStatus.IN_PROGRESS,
+            RideStatus.ONGOING,
+            RideStatus.ARRIVED,
+            RideStatus.ACCEPTED,
+        ];
+
+        let ride = await this.model
+            .findOne({ userId: oid, status: { $in: inTripStatuses } } as any)
+            .sort({ updatedAt: -1 })
+            .exec();
+        if (ride) return ride;
+
+        ride = await this.model
+            .findOne({
+                userId: oid,
+                status: RideStatus.SCHEDULED,
+                startTime: { $gte: new Date() },
+            } as any)
+            .sort({ startTime: 1 })
+            .exec();
+        if (ride) return ride;
+
+        ride = await this.model
+            .findOne({
+                userId: oid,
+                status: RideStatus.SEARCHING,
+                createdAt: { $gte: searchingCutoff },
+            } as any)
+            .sort({ createdAt: -1 })
+            .exec();
+        if (ride) return ride;
+
         return this.model
             .findOne({
-                userId: new Types.ObjectId(userId),
-                status: {
-                    $in: [
-                        RideStatus.SEARCHING,
-                        RideStatus.ACCEPTED,
-                        RideStatus.ARRIVED,
-                        RideStatus.IN_PROGRESS,
-                        RideStatus.PENDING, // legacy
-                        RideStatus.ONGOING, // legacy
-                    ],
-                },
+                userId: oid,
+                status: RideStatus.PENDING,
+                createdAt: { $gte: searchingCutoff },
             } as any)
             .sort({ createdAt: -1 })
             .exec();

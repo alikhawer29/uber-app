@@ -1,16 +1,83 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import * as admin from 'firebase-admin';
 import { FirebaseService } from './firebase.service';
 import { UserRepository } from '../../shared/repositories/user.repository';
+import { maskFcmToken } from '../utils/fcm-token.util';
+
+export type PushSendResult = {
+    successCount: number;
+    failureCount: number;
+    skipped: boolean;
+    reason?: string;
+    details?: Array<{ token: string; success: boolean; messageId?: string; errorCode?: string; errorMessage?: string }>;
+};
 
 @Injectable()
-export class PushNotificationService {
+export class PushNotificationService implements OnModuleInit {
     private readonly logger = new Logger(PushNotificationService.name);
 
     constructor(
         private readonly firebaseService: FirebaseService,
         private readonly userRepository: UserRepository,
-    ) { }
+        private readonly configService: ConfigService,
+    ) {}
+
+    onModuleInit() {
+        const ready = this.firebaseService.isInitialized();
+        const path = this.configService.get<string>('firebase.serviceAccountPath');
+        const channel = this.getAndroidChannelId();
+        if (ready) {
+            this.logger.log(
+                `[FCM] Ready — project initialized, androidChannelId="${channel}"${path ? `, serviceAccountPath="${path}"` : ''}`,
+            );
+        } else {
+            this.logger.error(
+                '[FCM] NOT initialized — push will be skipped. Set FIREBASE_SERVICE_ACCOUNT_PATH or FIREBASE_SERVICE_ACCOUNT_JSON in .env',
+            );
+        }
+    }
+
+    getDiagnostics() {
+        return {
+            firebaseInitialized: this.firebaseService.isInitialized(),
+            androidChannelId: this.getAndroidChannelId(),
+            serviceAccountPath: this.configService.get<string>('firebase.serviceAccountPath') ?? null,
+            hasServiceAccountJson: !!this.configService.get<string>('firebase.serviceAccountJson'),
+        };
+    }
+
+    private getAndroidChannelId(): string {
+        return this.configService.get<string>('firebase.androidChannelId') || 'default';
+    }
+
+    private buildMessage(
+        title: string,
+        body: string,
+        data: Record<string, string> | undefined,
+        token: string,
+    ): admin.messaging.Message {
+        return {
+            notification: { title, body },
+            data: data || {},
+            token,
+            android: {
+                priority: 'high' as const,
+                notification: {
+                    sound: 'default',
+                    channelId: this.getAndroidChannelId(),
+                },
+            },
+            apns: {
+                payload: {
+                    aps: {
+                        sound: 'default',
+                        badge: 1,
+                    },
+                },
+            },
+        };
+    }
 
     /**
      * Send push notification to a single device token
@@ -20,230 +87,180 @@ export class PushNotificationService {
         title: string,
         body: string,
         data?: Record<string, string>,
+        context?: { userId?: string },
     ): Promise<boolean> {
-        if (!this.firebaseService.isInitialized()) {
-            this.logger.warn('Firebase is not initialized. Cannot send push notification.');
-            return false;
-        }
-
-        const messaging = this.firebaseService.getMessaging();
-        if (!messaging) {
-            return false;
-        }
-
-        try {
-            const message: admin.messaging.Message = {
-                notification: {
-                    title,
-                    body,
-                },
-                data: data || {},
-                token: deviceToken,
-                android: {
-                    priority: 'high' as const,
-                    notification: {
-                        sound: 'default',
-                        channelId: 'video_sessions',
-                    },
-                },
-                apns: {
-                    payload: {
-                        aps: {
-                            sound: 'default',
-                            badge: 1,
-                        },
-                    },
-                },
-            };
-
-            const response = await messaging.send(message);
-            this.logger.log(`Push notification sent successfully: ${response}`);
-            return true;
-        } catch (error: any) {
-            this.logger.error(`Failed to send push notification to device ${deviceToken}:`, error.message);
-            
-            // Handle invalid token errors
-            if (error.code === 'messaging/invalid-registration-token' || 
-                error.code === 'messaging/registration-token-not-registered') {
-                this.logger.warn(`Invalid or unregistered token: ${deviceToken}`);
-            }
-            
-            return false;
-        }
+        const result = await this.sendToDevices([deviceToken], title, body, data, context);
+        return result.successCount > 0;
     }
 
     /**
-     * Send push notification to multiple device tokens
+     * Send push notification to multiple device tokens (one FCM request per token for clear per-device logs).
      */
     async sendToDevices(
         deviceTokens: string[],
         title: string,
         body: string,
         data?: Record<string, string>,
-    ): Promise<{ successCount: number; failureCount: number }> {
+        context?: { userId?: string },
+    ): Promise<PushSendResult> {
+        const userLabel = context?.userId ? `userId=${context.userId}` : 'userId=unknown';
+
         if (!this.firebaseService.isInitialized()) {
-            this.logger.warn('Firebase is not initialized. Cannot send push notifications.');
-            return { successCount: 0, failureCount: deviceTokens.length };
+            this.logger.error(`[PUSH] ${userLabel} — Firebase not initialized, ${deviceTokens.length} token(s) skipped`);
+            return {
+                successCount: 0,
+                failureCount: deviceTokens.length,
+                skipped: true,
+                reason: 'firebase_not_initialized',
+            };
         }
 
-        if (deviceTokens.length === 0) {
-            return { successCount: 0, failureCount: 0 };
+        const tokens = [...new Set(deviceTokens.map((t) => t?.trim()).filter(Boolean))];
+        if (tokens.length === 0) {
+            this.logger.warn(`[PUSH] ${userLabel} — no valid FCM tokens`);
+            return { successCount: 0, failureCount: 0, skipped: true, reason: 'no_tokens' };
         }
 
         const messaging = this.firebaseService.getMessaging();
         if (!messaging) {
-            return { successCount: 0, failureCount: deviceTokens.length };
+            this.logger.error(`[PUSH] ${userLabel} — messaging instance unavailable`);
+            return {
+                successCount: 0,
+                failureCount: tokens.length,
+                skipped: true,
+                reason: 'messaging_unavailable',
+            };
         }
 
-        try {
-            const message: admin.messaging.MulticastMessage = {
-                notification: {
-                    title,
-                    body,
-                },
-                data: data || {},
-                tokens: deviceTokens,
-                android: {
-                    priority: 'high' as const,
-                    notification: {
-                        sound: 'default',
-                        channelId: 'video_sessions',
-                    },
-                },
-                apns: {
-                    payload: {
-                        aps: {
-                            sound: 'default',
-                            badge: 1,
-                        },
-                    },
-                },
-            };
+        this.logger.log(
+            `[PUSH] ${userLabel} — sending "${title}" to ${tokens.length} device(s): ${tokens.map(maskFcmToken).join(', ')}`,
+        );
 
-            const response = await messaging.sendMulticast(message);
-            
-            this.logger.log(
-                `Push notifications sent: ${response.successCount} successful, ${response.failureCount} failed`
-            );
+        const details: PushSendResult['details'] = [];
+        let successCount = 0;
+        let failureCount = 0;
+        const invalidTokens: string[] = [];
 
-            // Remove invalid tokens
-            if (response.failureCount > 0) {
-                const invalidTokens: string[] = [];
-                response.responses.forEach((resp, idx) => {
-                    if (!resp.success) {
-                        const errorCode = resp.error?.code;
-                        if (errorCode === 'messaging/invalid-registration-token' ||
-                            errorCode === 'messaging/registration-token-not-registered') {
-                            invalidTokens.push(deviceTokens[idx]);
-                        }
-                    }
+        for (const token of tokens) {
+            try {
+                const messageId = await messaging.send(this.buildMessage(title, body, data, token));
+                successCount += 1;
+                details.push({ token: maskFcmToken(token), success: true, messageId });
+                this.logger.log(`[PUSH] ${userLabel} — OK ${maskFcmToken(token)} messageId=${messageId}`);
+            } catch (error: any) {
+                failureCount += 1;
+                const errorCode = error?.code as string | undefined;
+                const errorMessage = error?.message as string | undefined;
+                details.push({
+                    token: maskFcmToken(token),
+                    success: false,
+                    errorCode,
+                    errorMessage,
                 });
-
-                if (invalidTokens.length > 0) {
-                    this.logger.warn(`Found ${invalidTokens.length} invalid tokens. They should be removed from user profiles.`);
-                    // Optionally: Remove invalid tokens from database
-                    await this.removeInvalidTokens(invalidTokens);
+                this.logger.error(
+                    `[PUSH] ${userLabel} — FAIL ${maskFcmToken(token)} code=${errorCode ?? 'unknown'} msg=${errorMessage ?? error}`,
+                );
+                if (
+                    errorCode === 'messaging/invalid-registration-token' ||
+                    errorCode === 'messaging/registration-token-not-registered'
+                ) {
+                    invalidTokens.push(token);
                 }
             }
-
-            return {
-                successCount: response.successCount,
-                failureCount: response.failureCount,
-            };
-        } catch (error: any) {
-            this.logger.error(`Failed to send push notifications:`, error.message);
-            return { successCount: 0, failureCount: deviceTokens.length };
         }
+
+        if (invalidTokens.length > 0 && context?.userId) {
+            await this.removeInvalidTokensFromUser(context.userId, invalidTokens);
+        } else if (invalidTokens.length > 0) {
+            await this.removeInvalidTokens(invalidTokens);
+        }
+
+        this.logger.log(
+            `[PUSH] ${userLabel} — done success=${successCount} failure=${failureCount} title="${title}"`,
+        );
+
+        return { successCount, failureCount, skipped: false, details };
     }
 
     /**
      * Send push notification to a user by user ID
-     * Fetches user's device tokens and sends to all of them
      */
     async sendToUser(
         userId: string,
         title: string,
         body: string,
         data?: Record<string, string>,
-    ): Promise<{ successCount: number; failureCount: number }> {
+    ): Promise<PushSendResult> {
         try {
             const user = await this.userRepository.findById(userId);
             if (!user) {
-                this.logger.warn(`User not found: ${userId}`);
-                return { successCount: 0, failureCount: 0 };
+                this.logger.warn(`[PUSH] userId=${userId} — user not found`);
+                return { successCount: 0, failureCount: 0, skipped: true, reason: 'user_not_found' };
             }
 
             const fcmTokens = user.fcmTokens || [];
             if (fcmTokens.length === 0) {
-                this.logger.warn(`User ${userId} has no FCM tokens registered`);
-                return { successCount: 0, failureCount: 0 };
+                this.logger.warn(`[PUSH] userId=${userId} email=${user.email} — no FCM tokens on profile`);
+                return { successCount: 0, failureCount: 0, skipped: true, reason: 'no_fcm_tokens' };
             }
 
-            return await this.sendToDevices(fcmTokens, title, body, data);
+            this.logger.log(
+                `[PUSH] userId=${userId} email=${user.email} — ${fcmTokens.length} token(s) registered`,
+            );
+
+            return await this.sendToDevices(fcmTokens, title, body, data, { userId });
         } catch (error: any) {
-            this.logger.error(`Failed to send push notification to user ${userId}:`, error.message);
-            return { successCount: 0, failureCount: 0 };
+            this.logger.error(`[PUSH] userId=${userId} — exception: ${error?.message ?? error}`);
+            return { successCount: 0, failureCount: 0, skipped: true, reason: 'exception' };
         }
     }
 
-    /**
-     * Send video session start notification
-     */
     async sendVideoSessionStartNotification(
         userId: string,
         bookingId: string,
         sessionName: string,
     ): Promise<boolean> {
-        const title = 'Video Session Started';
-        const body = 'Admin has started the video session. Tap to join.';
-        const data = {
+        const result = await this.sendToUser(userId, 'Video Session Started', 'Admin has started the video session. Tap to join.', {
             type: 'video_session_start',
             bookingId,
             sessionName,
             action: 'join_session',
-        };
-
-        const result = await this.sendToUser(userId, title, body, data);
+        });
         return result.successCount > 0;
     }
 
-    /**
-     * Send video session end notification
-     */
     async sendVideoSessionEndNotification(
         userId: string,
         bookingId: string,
         reason?: string,
     ): Promise<boolean> {
-        const title = 'Video Session Ended';
-        const body = reason || 'The video session has ended.';
-        const data = {
+        const data: Record<string, string> = {
             type: 'video_session_end',
             bookingId,
             action: 'session_ended',
         };
-
-        if (reason) {
-            data['reason'] = reason;
-        }
-
-        const result = await this.sendToUser(userId, title, body, data);
+        if (reason) data.reason = reason;
+        const result = await this.sendToUser(userId, 'Video Session Ended', reason || 'The video session has ended.', data);
         return result.successCount > 0;
     }
 
-    /**
-     * Remove invalid FCM tokens from all users
-     */
+    private async removeInvalidTokensFromUser(userId: string, invalidTokens: string[]): Promise<void> {
+        for (const token of invalidTokens) {
+            await this.userRepository.removeFcmTokenFromUser(userId, token);
+        }
+        this.logger.warn(
+            `[PUSH] userId=${userId} — removed ${invalidTokens.length} invalid FCM token(s) from profile`,
+        );
+    }
+
     private async removeInvalidTokens(invalidTokens: string[]): Promise<void> {
         try {
-            // Find all users with these tokens and remove them
             for (const token of invalidTokens) {
                 await this.userRepository.removeFcmToken(token);
             }
-            this.logger.log(`Removed ${invalidTokens.length} invalid FCM tokens from user profiles`);
+            this.logger.log(`[PUSH] removed ${invalidTokens.length} invalid FCM token(s) globally`);
         } catch (error: any) {
-            this.logger.error(`Failed to remove invalid tokens:`, error.message);
+            this.logger.error(`[PUSH] failed to remove invalid tokens: ${error?.message ?? error}`);
         }
     }
 }
-

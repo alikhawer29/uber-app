@@ -374,10 +374,18 @@ export class UserRideService {
     /**
      * Book Now (no schedule fields) or Schedule Later (`scheduledAt` or `scheduledAtDate` + `scheduledAtTime`).
      */
+    private getSearchingTimeoutMs(): number {
+        const minutes = this.configService.get<number>('ride.searchingTimeoutMinutes') ?? 30;
+        return Math.max(1, minutes) * 60_000;
+    }
+
     async bookRide(userId: string, dto: BookRideDto) {
         if (dto.paymentMethod === RidePaymentType.CARD && !dto.cardId) {
             throw new BadRequestException({ code: 'CARD_NOT_FOUND', message: 'cardId is required for card payments' });
         }
+
+        await this.rideRepository.expireStaleSearchingRidesForUser(userId, this.getSearchingTimeoutMs());
+        await this.rideRepository.closeSupersededUserRides(userId);
 
         const scheduled = resolveScheduledAtFromPayload(dto);
         if (scheduled) {
@@ -433,6 +441,9 @@ export class UserRideService {
     }
 
     private async bookScheduled(userId: string, dto: BookRideDto, scheduled: Date) {
+        await this.rideRepository.expireStaleSearchingRidesForUser(userId, this.getSearchingTimeoutMs());
+        await this.rideRepository.closeSupersededUserRides(userId);
+
         const now = Date.now();
         if (scheduled.getTime() < now + SCHEDULE_MIN_MS) {
             throw new BadRequestException({
@@ -497,7 +508,9 @@ export class UserRideService {
     }
 
     async getActiveRide(userId: string) {
-        const ride = await this.rideRepository.findActiveForUser(userId);
+        const searchingTimeoutMs = this.getSearchingTimeoutMs();
+        await this.rideRepository.expireStaleSearchingRidesForUser(userId, searchingTimeoutMs);
+        const ride = await this.rideRepository.findActiveForUser(userId, searchingTimeoutMs);
         if (!ride) {
             throw new NotFoundException({ code: 'NO_ACTIVE_RIDE', message: 'User has no active ride at this time' });
         }

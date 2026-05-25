@@ -37,23 +37,19 @@ export class FirebaseService implements OnModuleInit {
             let serviceAccountRaw: any;
 
             if (serviceAccountPath) {
-                // Resolve path relative to project root (not dist/)
-                const absolutePath = path.isAbsolute(serviceAccountPath)
-                    ? serviceAccountPath
-                    : path.resolve(process.cwd(), serviceAccountPath);
-                
-                // Check if file exists
-                if (!fs.existsSync(absolutePath)) {
-                    throw new Error(`Firebase service account file not found at: ${absolutePath}`);
+                const absolutePath = this.resolveServiceAccountPath(serviceAccountPath);
+                if (!absolutePath) {
+                    throw new Error(
+                        `Firebase service account file not found. Tried path "${serviceAccountPath}" under cwd=${process.cwd()}`,
+                    );
                 }
 
-                // Read and parse JSON file
                 try {
                     const fileContent = fs.readFileSync(absolutePath, 'utf8');
                     serviceAccountRaw = JSON.parse(fileContent);
-                    this.logger.log(`Loaded Firebase service account from: ${absolutePath}`);
+                    this.logger.log(`[FCM] Loaded service account from: ${absolutePath}`);
                 } catch (error: any) {
-                    this.logger.error(`Failed to read Firebase service account file: ${error.message}`);
+                    this.logger.error(`[FCM] Failed to read service account file: ${error.message}`);
                     throw new Error(`Failed to read Firebase service account file: ${error.message}`);
                 }
             } else if (serviceAccountJson) {
@@ -88,11 +84,35 @@ export class FirebaseService implements OnModuleInit {
                 credential: admin.credential.cert(serviceAccount),
             });
 
-            this.logger.log(`Firebase Admin SDK initialized successfully for project: ${serviceAccount.projectId}`);
+            this.logger.log(
+                `[FCM] Admin SDK initialized — projectId=${serviceAccount.projectId} clientEmail=${serviceAccount.clientEmail}`,
+            );
         } catch (error: any) {
-            this.logger.error('Failed to initialize Firebase Admin SDK:', error.message);
-            this.logger.error('Push notifications will not be available');
+            this.logger.error(`[FCM] Failed to initialize Admin SDK: ${error.message}`);
+            this.logger.error('[FCM] Push notifications will be DISABLED until configuration is fixed');
         }
+    }
+
+    /** Resolve service account path (cwd, dist parent, default filename). */
+    private resolveServiceAccountPath(configuredPath: string): string | null {
+        const candidates = [
+            configuredPath,
+            path.isAbsolute(configuredPath)
+                ? configuredPath
+                : path.resolve(process.cwd(), configuredPath),
+            path.resolve(process.cwd(), 'firebase-service-account.json'),
+            path.resolve(__dirname, '../../../firebase-service-account.json'),
+            path.resolve(__dirname, '../../../../firebase-service-account.json'),
+        ];
+        for (const candidate of candidates) {
+            if (candidate && fs.existsSync(candidate)) {
+                return candidate;
+            }
+        }
+        this.logger.warn(
+            `[FCM] Service account not found. cwd=${process.cwd()} configured="${configuredPath}"`,
+        );
+        return null;
     }
 
     /**

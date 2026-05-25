@@ -76,6 +76,8 @@ export default () => {
             avgSpeedKmh: parseFloat(process.env.RIDE_AVG_SPEED_KMH || '30'),
             /** Multiplier on `waitingFeePerMin` to approximate time-based fare component */
             timeFareFactor: parseFloat(process.env.RIDE_TIME_FARE_FACTOR || '0.35'),
+            /** How long a ride may stay in `searching` before it is auto-cancelled (no driver) */
+            searchingTimeoutMinutes: parseInt(process.env.RIDE_SEARCHING_TIMEOUT_MINUTES || '30', 10),
         },
         firebase: {
             // Firebase service account JSON (can be provided as string or file path)
@@ -83,6 +85,8 @@ export default () => {
             serviceAccountJson: process.env.FIREBASE_SERVICE_ACCOUNT_JSON,
             // Option 2: Path to service account JSON file
             serviceAccountPath: process.env.FIREBASE_SERVICE_ACCOUNT_PATH,
+            /** Android notification channel id (must exist in the mobile app) */
+            androidChannelId: process.env.FCM_ANDROID_CHANNEL_ID || 'default',
         },
     });
 }

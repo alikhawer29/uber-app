@@ -57,13 +57,25 @@ export class NotificationService {
         void this.pushNotificationService
             .sendToUser(data.recipientId, data.title, data.message, payload)
             .then((r) => {
-                if (r.successCount === 0 && r.failureCount === 0) {
-                    this.logger.debug(`Push skipped or no tokens for recipient ${data.recipientId}`);
+                if (r.skipped) {
+                    this.logger.warn(
+                        `[NOTIFY→PUSH] skipped recipient=${data.recipientId} type=${data.type} reason=${r.reason ?? 'unknown'} notificationId=${data.notificationId}`,
+                    );
+                    return;
+                }
+                if (r.successCount > 0) {
+                    this.logger.log(
+                        `[NOTIFY→PUSH] sent recipient=${data.recipientId} type=${data.type} success=${r.successCount} failure=${r.failureCount} notificationId=${data.notificationId} title="${data.title}"`,
+                    );
+                } else {
+                    this.logger.error(
+                        `[NOTIFY→PUSH] all failed recipient=${data.recipientId} type=${data.type} failure=${r.failureCount} notificationId=${data.notificationId} title="${data.title}"`,
+                    );
                 }
             })
             .catch((err) =>
-                this.logger.warn(
-                    `Push failed for recipient ${data.recipientId}: ${err instanceof Error ? err.message : err}`,
+                this.logger.error(
+                    `[NOTIFY→PUSH] exception recipient=${data.recipientId} type=${data.type}: ${err instanceof Error ? err.message : err}`,
                 ),
             );
     }
@@ -92,7 +104,9 @@ export class NotificationService {
                 extra: data.data,
             });
 
-            this.logger.debug(`Notification created for user ${data.recipient}: ${data.title}`);
+            this.logger.log(
+                `[NOTIFY] created recipient=${data.recipient} type=${data.type} id=${nid} title="${data.title}"`,
+            );
             return notification;
         } catch (error) {
             this.logger.error(`Failed to create notification for user ${data.recipient}:`, error);

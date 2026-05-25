@@ -183,7 +183,12 @@ export class RiderRidesService {
 
         ride = (await this.rideRepository.findById(rideId)) || ride;
 
-        this.rideGateway.emitRideStatusToUser(String((ride as any).userId), { rideId, status: RideStatus.COMPLETED });
+        this.rideGateway.emitRideStatusToUser(String((ride as any).userId), {
+            rideId,
+            status: RideStatus.COMPLETED,
+            finalFare: ride.totalAmount,
+            completedAt: new Date().toISOString(),
+        });
         void this.rideNotificationService.notifyRideCompleted(
             String((ride as any).userId),
             riderId,

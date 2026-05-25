@@ -1,17 +1,52 @@
-import { Controller, Get, Patch, Param, Query } from '@nestjs/common';
+import { Controller, Get, Patch, Param, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { NotificationRepository } from 'src/shared/repositories/notification.repository';
 import { NotificationStatus } from 'src/shared/schemas/notification.schema';
 import { CurrentUser } from 'src/common/decorators/current-user.decorator';
 import { Roles } from 'src/common/decorators/roles.decorator';
 import { UserRole } from 'src/common/constants/user.constants';
+import { PushNotificationService } from 'src/common/services/push-notification.service';
 
 @ApiTags('User — Notifications')
 @ApiBearerAuth()
 @Roles(UserRole.USER)
 @Controller('user/notifications')
 export class UserNotificationsController {
-    constructor(private readonly notificationRepository: NotificationRepository) { }
+    constructor(
+        private readonly notificationRepository: NotificationRepository,
+        private readonly pushNotificationService: PushNotificationService,
+    ) {}
+
+    @Get('push/status')
+    @ApiOperation({ summary: 'FCM diagnostics for current user' })
+    pushStatus(@CurrentUser() user: { id: string }) {
+        return {
+            success: true,
+            data: {
+                userId: user.id,
+                ...this.pushNotificationService.getDiagnostics(),
+            },
+        };
+    }
+
+    @Post('push/test')
+    @ApiOperation({ summary: 'Send test push to your registered devices' })
+    async testPush(@CurrentUser() user: { id: string }) {
+        const result = await this.pushNotificationService.sendToUser(
+            user.id,
+            'Test notification',
+            'If you see this, push notifications are working.',
+            { type: 'test_push', action: 'open_app' },
+        );
+        return {
+            success: result.successCount > 0,
+            message:
+                result.successCount > 0
+                    ? `Sent to ${result.successCount} device(s). Check server logs for [PUSH].`
+                    : `Not delivered: ${result.reason ?? 'check logs'}`,
+            data: result,
+        };
+    }
 
     @Get()
     @ApiOperation({ summary: 'List notifications (paginated)' })
