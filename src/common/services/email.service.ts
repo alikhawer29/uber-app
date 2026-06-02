@@ -1,6 +1,7 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as nodemailer from 'nodemailer';
+import { resolveMailConfig } from '../utils/mail-config.util';
 
 export interface EmailOptions {
     to: string;
@@ -10,13 +11,17 @@ export interface EmailOptions {
 }
 
 @Injectable()
-export class EmailService {
+export class EmailService implements OnModuleInit {
     private readonly logger = new Logger(EmailService.name);
     private transporter: nodemailer.Transporter;
     private isConfigured = false;
+    private mailFrom = '';
+    private activeHost = '';
 
-    constructor(private configService: ConfigService) {
-        this.initializeTransporter();
+    constructor(private configService: ConfigService) {}
+
+    async onModuleInit() {
+        await this.initializeTransporter();
     }
 
     private resolveAppName(): string {
@@ -26,106 +31,66 @@ export class EmailService {
     }
 
     private async initializeTransporter() {
-        // Resolve app name (prefer Nest config, then APP_NAME env)
         const resolvedAppName = this.resolveAppName();
+        const mailConfig = resolveMailConfig(resolvedAppName);
 
-        // Use the same environment variable names as Laravel
-        const mailConfig = {
-            host: process.env.MAIL_HOST || 'smtppro.zoho.com',
-            port: parseInt(process.env.MAIL_PORT || "587", 10),
-            secure: process.env.MAIL_ENCRYPTION === 'tls' ? false : true,
-            auth: {
-                user: process.env.MAIL_USERNAME || process.env.EMAIL_USER,
-                pass: process.env.MAIL_PASSWORD || process.env.EMAIL_PASSWORD,
-            },
-            from: process.env.MAIL_FROM_ADDRESS || process.env.EMAIL_FROM,
-            // If MAIL_FROM_NAME is literally '${APP_NAME}', treat it as placeholder and use resolvedAppName
-            fromName: (
-                process.env.MAIL_FROM_NAME && process.env.MAIL_FROM_NAME !== '${APP_NAME}'
-                    ? process.env.MAIL_FROM_NAME
-                    : resolvedAppName
-            ),
-        };
-
-        this.logger.debug(`📧 Laravel-style Mail Configuration:`);
-        this.logger.debug(`   MAIL_HOST: ${mailConfig.host}`);
-        this.logger.debug(`   MAIL_PORT: ${mailConfig.port}`);
-        this.logger.debug(`   MAIL_USERNAME: ${mailConfig.auth.user}`);
-        this.logger.debug(`   MAIL_ENCRYPTION: ${process.env.MAIL_ENCRYPTION}`);
-        this.logger.debug(`   MAIL_FROM: ${mailConfig.from}`);
-
-        // Check if mail configuration exists
-        if (!mailConfig.auth.user || !mailConfig.auth.pass) {
-            this.logger.error('❌ Mail credentials missing! Please set MAIL_USERNAME and MAIL_PASSWORD environment variables.');
-            this.logger.error('   Checked: MAIL_USERNAME, EMAIL_USER, MAIL_PASSWORD, EMAIL_PASSWORD');
+        if (!mailConfig) {
+            this.logger.error(
+                '[EMAIL] NOT configured — set MAIL_USERNAME and MAIL_PASSWORD (or EMAIL_USER / EMAIL_PASS) in server .env',
+            );
             this.isConfigured = false;
             return;
         }
 
-        // Log credential status (without exposing the actual password)
-        this.logger.debug(`📧 Email credentials status: ${mailConfig.auth.user ? '✅ Username set' : '❌ Username missing'}`);
-        this.logger.debug(`📧 Password status: ${mailConfig.auth.pass ? '✅ Password set (length: ' + mailConfig.auth.pass.length + ')' : '❌ Password missing'}`);
+        this.mailFrom = `"${mailConfig.fromName}" <${mailConfig.from}>`;
+        this.activeHost = mailConfig.host;
+
+        this.logger.log(
+            `[EMAIL] config host=${mailConfig.host} port=${mailConfig.port} secure=${mailConfig.secure} user=${mailConfig.user} from=${mailConfig.from} passLen=${mailConfig.pass.length}`,
+        );
+
+        if (mailConfig.from.toLowerCase() !== mailConfig.user.toLowerCase()) {
+            this.logger.warn(
+                `[EMAIL] MAIL_FROM_ADDRESS (${mailConfig.from}) differs from MAIL_USERNAME (${mailConfig.user})`,
+            );
+        }
 
         try {
-            // Match Laravel's Zoho configuration exactly
             this.transporter = nodemailer.createTransport({
                 host: mailConfig.host,
                 port: mailConfig.port,
-                secure: mailConfig.port === 465, // true for 465, false for 587
+                secure: mailConfig.secure,
                 auth: {
-                    user: mailConfig.auth.user,
-                    pass: mailConfig.auth.pass,
+                    user: mailConfig.user,
+                    pass: mailConfig.pass,
                 },
-                // Zoho-specific settings that match Laravel
-                tls: {
-                    ciphers: 'SSLv3',
-                    rejectUnauthorized: false
-                },
-                // Important: Zoho requires specific connection settings
-                requireTLS: true,
-                ignoreTLS: false
+                requireTLS: mailConfig.requireTLS,
+                tls: { rejectUnauthorized: false },
             });
 
-            // Verify connection configuration
-            this.logger.log('🔧 Testing Zoho Mail connection with Laravel configuration...');
+            this.logger.log(`[EMAIL] verifying SMTP connection to ${mailConfig.host}...`);
             await this.transporter.verify();
-            this.logger.log('✅ Zoho Mail transporter is ready to send messages');
+            this.logger.log(`[EMAIL] READY — SMTP auth OK (${mailConfig.host})`);
             this.isConfigured = true;
-
-        } catch (error) {
-            this.logger.error('❌ Failed to initialize Zoho Mail transporter:', error.message);
+        } catch (error: any) {
+            this.logger.error(`[EMAIL] SMTP verify failed: ${error?.message ?? error}`);
             this.logger.error('🔍 Full error:', error);
 
             // Check for specific authentication errors
             if (error.message && error.message.includes('535')) {
-                this.logger.error('');
-                this.logger.error('⚠️  ZOHO AUTHENTICATION ERROR DETECTED');
-                this.logger.error('═══════════════════════════════════════════════════════════');
-                this.logger.error('The error "535 Incorrect authentication data" usually means:');
-                this.logger.error('');
-                this.logger.error('1. ❌ Wrong username or password');
-                this.logger.error('   → Verify MAIL_USERNAME and MAIL_PASSWORD in your .env file');
-                this.logger.error('');
-                this.logger.error('2. 🔐 Two-Factor Authentication (2FA) is enabled');
-                this.logger.error('   → Zoho requires an "App Password" when 2FA is enabled');
-                this.logger.error('   → Go to: https://accounts.zoho.com/home#security/app-passwords');
-                this.logger.error('   → Generate an App Password and use it instead of your regular password');
-                this.logger.error('');
-                this.logger.error('3. 📧 SMTP access not enabled for your account');
-                this.logger.error('   → Check Zoho Mail settings to ensure SMTP is enabled');
-                this.logger.error('');
-                this.logger.error('4. 🌍 Wrong Zoho server region');
-                this.logger.error('   → Try smtp.zoho.com, smtp.zoho.eu, or smtp.zoho.in based on your region');
-                this.logger.error('═══════════════════════════════════════════════════════════');
-                this.logger.error('');
+                this.logger.error(
+                    '[EMAIL] 535 auth failed — check MAIL_USERNAME/MAIL_PASSWORD on THIS server (PM2 .env). Gmail: use App Password, port 587 + MAIL_ENCRYPTION=tls',
+                );
             }
 
-            // Try alternative Zoho configuration
-            await this.tryZohoAlternatives(mailConfig);
+            await this.tryZohoAlternatives({
+                auth: { user: mailConfig.user, pass: mailConfig.pass },
+                from: mailConfig.from,
+            });
         }
     }
 
-    private async tryZohoAlternatives(mailConfig: any) {
+    private async tryZohoAlternatives(mailConfig: { auth: { user: string; pass: string }; from: string }) {
         this.logger.log('🔄 Trying alternative Zoho configurations...');
 
         const alternatives = [
@@ -189,18 +154,8 @@ export class EmailService {
             return false;
         }
 
-        const resolvedAppName = this.resolveAppName();
-
-        const fromAddress = process.env.MAIL_FROM_ADDRESS || process.env.EMAIL_FROM;
-        const fromName = (
-            process.env.MAIL_FROM_NAME && process.env.MAIL_FROM_NAME !== '${APP_NAME}'
-                ? process.env.MAIL_FROM_NAME
-                : resolvedAppName
-        );
-        const from = `"${fromName}" <${fromAddress}>`;
-
         const mailOptions = {
-            from: from,
+            from: this.mailFrom || undefined,
             to: options.to,
             subject: options.subject,
             html: options.html,
@@ -210,7 +165,7 @@ export class EmailService {
         try {
             this.logger.log(`📧 Attempting to send email to: ${options.to}`);
             this.logger.log(`📝 Subject: ${options.subject}`);
-            this.logger.log(`📨 From: ${from}`);
+            this.logger.log(`📨 From: ${this.mailFrom} via ${this.activeHost}`);
 
             const result = await this.transporter.sendMail(mailOptions);
 

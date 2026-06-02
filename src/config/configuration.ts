@@ -39,7 +39,10 @@ export default () => {
             secure: process.env.MAIL_ENCRYPTION === 'ssl' || process.env.EMAIL_SECURE === 'true',
             auth: {
                 user: process.env.MAIL_USERNAME || process.env.EMAIL_USER,
-                pass: process.env.MAIL_PASSWORD || process.env.EMAIL_PASS,
+                pass:
+                    process.env.MAIL_PASSWORD ||
+                    process.env.EMAIL_PASSWORD ||
+                    process.env.EMAIL_PASS,
             },
             from: process.env.MAIL_FROM_ADDRESS || process.env.EMAIL_FROM || 'custom-dev@onlinetestingserver.com',
             fromName: resolvedFromName,
