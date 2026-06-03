@@ -2,6 +2,7 @@ import { Injectable, NestInterceptor, ExecutionContext, CallHandler } from '@nes
 import { Observable } from 'rxjs';
 import { map } from 'rxjs/operators';
 import { ObjectIdUtils } from '../utils/object-id.utils';
+import { resolvePublicUrlsDeep } from '../utils/public-url.util';
 
 export interface Response<T> {
     success: boolean;
@@ -32,6 +33,8 @@ export class TransformInterceptor<T> implements NestInterceptor<T, Response<T>> 
                 ) {
                     processedData = (processedData as { data: unknown }).data as typeof processedData;
                 }
+
+                processedData = resolvePublicUrlsDeep(processedData);
 
                 // Avoid duplicating `message`: handlers often return `{ message: '…' }`; that already
                 // appears under `data`, so the envelope should not repeat it.

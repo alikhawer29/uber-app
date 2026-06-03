@@ -1,21 +1,6 @@
-export class sanitizeUserUtils {
-    /** Same default as `configuration.ts` `app.url`. */
-    private static readonly defaultAppUrl = 'http://localhost:3000';
+import { resolvePublicAssetUrl } from './public-url.util';
 
-    /**
-     * Absolute URL for the avatar (APP_URL + path). If `avatar` is already http(s), mirrors it.
-     */
-    private static resolveAvatarUrl(avatar: string | null | undefined): string | null {
-        if (avatar == null || avatar === '') {
-            return null;
-        }
-        if (avatar.startsWith('http://') || avatar.startsWith('https://')) {
-            return avatar;
-        }
-        const base = (process.env.APP_URL || sanitizeUserUtils.defaultAppUrl).replace(/\/+$/, '');
-        const path = avatar.startsWith('/') ? avatar : `/${avatar}`;
-        return `${base}${path}`;
-    }
+export class sanitizeUserUtils {
 
     static sanitizeUser(user: any) {
         if (!user) return null;
@@ -47,7 +32,8 @@ export class sanitizeUserUtils {
             userObj.avatar = null;
         }
 
-        userObj.avatar_url = sanitizeUserUtils.resolveAvatarUrl(userObj.avatar);
+        userObj.avatar = resolvePublicAssetUrl(userObj.avatar);
+        userObj.avatar_url = userObj.avatar;
 
         // Convert dates from objects to ISO strings
         if (userObj.createdAt && typeof userObj.createdAt === 'object') {
