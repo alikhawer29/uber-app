@@ -12,9 +12,10 @@ import { RiderVehicleUpdateRequestRepository } from 'src/shared/repositories/rid
 import { VehicleTypeRepository } from 'src/shared/repositories/vehicle-type.repository';
 import { FileRepository } from 'src/shared/repositories/file.repository';
 import { RiderVehicleUpdateDto } from '../dto/rider-vehicle-update.dto';
+import { RiderAddVehicleDto } from '../dto/rider-add-vehicle.dto';
 import { UserRole } from 'src/common/constants/user.constants';
 import { UserStatus } from 'src/common/constants/user.constants';
-import { RiderVehicleUpdateRequestStatus } from 'src/common/constants/rider.constants';
+import { RiderVehicleApprovalStatus, RiderVehicleUpdateRequestStatus } from 'src/common/constants/rider.constants';
 import { FileType, FileCategory } from 'src/common/constants/file.constants';
 import { NotificationService } from 'src/modules/notification/services/notification.service';
 import { NotificationType } from 'src/shared/schemas/notification.schema';
@@ -33,6 +34,115 @@ export class RiderVehicleUpdateService {
         private readonly fileRepository: FileRepository,
         private readonly notificationService: NotificationService,
     ) {}
+
+    /**
+     * Add a vehicle for an existing active rider (no vehicle yet, or previous one was rejected).
+     * Creates a pending vehicle for admin approval — same flow as vehicle at signup.
+     */
+    async registerVehicle(
+        userId: string,
+        dto: RiderAddVehicleDto,
+        files: Record<string, Express.Multer.File[] | undefined>,
+    ) {
+        const user = await this.userRepository.findById(userId);
+        if (!user || String(user.role) !== UserRole.RIDER || user.status !== UserStatus.ACTIVE) {
+            throw new BadRequestException('Only active riders can register a vehicle');
+        }
+
+        const existing = await this.riderVehicleRepository.findLatestByUserIdWithVehicleType(userId);
+        if (existing) {
+            const status = String((existing as any).approvalStatus);
+            if (status === RiderVehicleApprovalStatus.PENDING) {
+                throw new ConflictException(
+                    'You already have a vehicle pending approval. Wait for admin review or contact support.',
+                );
+            }
+            if (status === RiderVehicleApprovalStatus.APPROVED) {
+                throw new BadRequestException(
+                    'You already have an approved vehicle. Use POST /rider/vehicle/update-request to change details.',
+                );
+            }
+        }
+
+        const licensePlateFiles = this.mergeMultipartFiles(files, 'licensePlateImage');
+        const documentFiles = this.mergeMultipartFiles(files, 'documentImage');
+        const vehicleFiles = this.mergeMultipartFiles(files, 'vehicleImage');
+
+        if (licensePlateFiles.length === 0 || documentFiles.length === 0 || vehicleFiles.length === 0) {
+            throw new BadRequestException(
+                'At least one licensePlateImage, one documentImage, and one vehicleImage are required (JPG, JPEG, or PNG; max 3 MB each)',
+            );
+        }
+        for (const group of [licensePlateFiles, documentFiles, vehicleFiles]) {
+            if (group.length > MAX_IMAGES_PER_GROUP) {
+                throw new BadRequestException(`At most ${MAX_IMAGES_PER_GROUP} images allowed per upload group`);
+            }
+            for (const f of group) {
+                this.assertImageUnderLimit(f);
+            }
+        }
+
+        const vehicleType = await this.vehicleTypeRepository.findById(dto.vehicleTypeId);
+        if (!vehicleType || !vehicleType.isActive) {
+            throw new BadRequestException('Invalid or inactive vehicle type');
+        }
+
+        const uOid = new Types.ObjectId(userId);
+        const vehicle = await this.riderVehicleRepository.create({
+            userId: uOid,
+            vehicleTypeId: new Types.ObjectId(dto.vehicleTypeId),
+            brandName: dto.brandName.trim(),
+            vehicleName: dto.vehicleName.trim(),
+            vehicleColor: dto.vehicleColor.trim(),
+            licensePlateNumber: dto.licensePlateNumber.trim().toUpperCase(),
+            approvalStatus: RiderVehicleApprovalStatus.PENDING,
+            licensePlateImageUrls: [],
+            registrationDocumentUrls: [],
+            vehicleImageUrls: [],
+        } as any);
+
+        const vOid = vehicle._id as Types.ObjectId;
+        const lpUrls = await this.saveRiderFiles(
+            licensePlateFiles,
+            FileCategory.RIDER_LICENSE_PLATE,
+            vOid,
+            uOid,
+        );
+        const docUrls = await this.saveRiderFiles(
+            documentFiles,
+            FileCategory.RIDER_REGISTRATION_DOC,
+            vOid,
+            uOid,
+        );
+        const vehUrls = await this.saveRiderFiles(
+            vehicleFiles,
+            FileCategory.RIDER_VEHICLE_PHOTO,
+            vOid,
+            uOid,
+        );
+
+        await this.riderVehicleRepository.update(String(vOid), {
+            licensePlateImageUrls: lpUrls,
+            registrationDocumentUrls: docUrls,
+            vehicleImageUrls: vehUrls,
+        } as any);
+
+        const first = (user as any).firstName ?? '';
+        const last = (user as any).lastName ?? '';
+        const email = (user.email ?? '').toLowerCase();
+        await this.notificationService.notifyAdmins({
+            title: 'New vehicle submitted',
+            message: `${first} ${last} (${email}) submitted a vehicle for admin approval.`,
+            type: NotificationType.RIDER_VEHICLE_UPDATE_REQUEST,
+            data: { userId, vehicleId: String(vOid) },
+        });
+
+        return {
+            success: true,
+            message: 'Vehicle submitted for approval. You will be notified once an administrator reviews it.',
+            data: { vehicleId: String(vOid), approvalStatus: RiderVehicleApprovalStatus.PENDING },
+        };
+    }
 
     /** Latest rider vehicle row with populated vehicle type (any approval status). */
     async getMyVehicle(userId: string) {

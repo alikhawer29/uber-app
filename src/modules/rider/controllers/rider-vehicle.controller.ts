@@ -21,6 +21,7 @@ import { Roles } from 'src/common/decorators/roles.decorator';
 import { UserRole } from 'src/common/constants/user.constants';
 import { multerConfig } from 'src/config/multer.config';
 import { RiderVehicleUpdateDto } from '../dto/rider-vehicle-update.dto';
+import { RiderAddVehicleDto } from '../dto/rider-add-vehicle.dto';
 import { RiderVehicleUpdateService } from '../services/rider-vehicle-update.service';
 
 const MAX_IMAGES_PER_FIELD = 15;
@@ -31,6 +32,37 @@ const MAX_IMAGES_PER_FIELD = 15;
 @Controller('rider/vehicle')
 export class RiderVehicleController {
     constructor(private readonly riderVehicleUpdateService: RiderVehicleUpdateService) {}
+
+    @Post()
+    @HttpCode(HttpStatus.CREATED)
+    @UseInterceptors(
+        FileFieldsInterceptor(
+            [
+                { name: 'licensePlateImage', maxCount: MAX_IMAGES_PER_FIELD },
+                { name: 'licensePlateImage[]', maxCount: MAX_IMAGES_PER_FIELD },
+                { name: 'documentImage', maxCount: MAX_IMAGES_PER_FIELD },
+                { name: 'documentImage[]', maxCount: MAX_IMAGES_PER_FIELD },
+                { name: 'vehicleImage', maxCount: MAX_IMAGES_PER_FIELD },
+                { name: 'vehicleImage[]', maxCount: MAX_IMAGES_PER_FIELD },
+            ],
+            multerConfig,
+        ),
+    )
+    @ApiConsumes('multipart/form-data')
+    @ApiBody({ type: RiderAddVehicleDto })
+    @ApiOperation({
+        summary: 'Add / register vehicle (existing active rider)',
+        description:
+            'Use when you have no vehicle or your last vehicle was rejected. Requires all text fields and at least one image per group. Admin must approve before you can use update-request.',
+    })
+    @ApiResponse({ status: 201, description: 'Vehicle submitted for approval' })
+    addVehicle(
+        @CurrentUser() rider: { id: string },
+        @Body() dto: RiderAddVehicleDto,
+        @UploadedFiles() files: Record<string, Express.Multer.File[] | undefined>,
+    ) {
+        return this.riderVehicleUpdateService.registerVehicle(rider.id, dto, files ?? {});
+    }
 
     @Get()
     @ApiOperation({
