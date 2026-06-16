@@ -28,11 +28,15 @@ export class RideGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   async handleConnection(client: Socket) {
     try {
-      const token =
-        client.handshake.auth.token || client.handshake.headers.token;
+      let token = client.handshake.auth.token || client.handshake.headers.token;
       if (!token) {
         client.disconnect();
         return;
+      }
+
+      // "Bearer " prefix hatao agar hai
+      if (token.startsWith("Bearer ")) {
+        token = token.slice(7);
       }
 
       const payload = await this.jwtService.verifyAsync(token, {

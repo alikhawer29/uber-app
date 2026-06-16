@@ -73,11 +73,6 @@ export class RideMatchingService {
 
         // Socket room check
         const room = `rider_${riderId}`;
-        const socketsInRoom =
-          this.rideGateway.server.sockets.adapter.rooms.get(room);
-        this.logger.log(
-          `🔌 Room ${room} has ${socketsInRoom?.size ?? 0} connected sockets`,
-        );
 
         this.rideGateway.emitRideRequestToRider(riderId, {
           rideId: String((ride as any)._id),
