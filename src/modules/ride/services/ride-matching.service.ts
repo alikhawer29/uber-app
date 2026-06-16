@@ -51,7 +51,6 @@ export class RideMatchingService {
         });
 
       this.logger.log(`👥 Candidates found: ${candidates.length}`);
-      this.logger.log(`👥 Candidates raw: ${JSON.stringify(candidates)}`); // ← exact data dekho
 
       for (const loc of candidates) {
         const riderId = String((loc as any).riderId);
@@ -59,7 +58,7 @@ export class RideMatchingService {
 
         const rider = await this.userRepository.findById(riderId);
         if (!rider) {
-          this.logger.warn(`⚠️ Rider ${riderId} not found in users`);
+          this.logger.warn(`⚠️ Rider not found`);
           continue;
         }
         if (rider.role !== UserRole.RIDER) {
@@ -67,12 +66,26 @@ export class RideMatchingService {
           continue;
         }
         if (rider.status !== UserStatus.ACTIVE) {
-          this.logger.warn(`⚠️ Rider not active: ${rider.status}`);
+          this.logger.warn(`⚠️ Not active: ${rider.status}`);
           continue;
         }
 
-        // Socket room check
-        const room = `rider_${riderId}`;
+        this.logger.log(`✅ Rider passed all checks`); // ← naya log
+
+        const existing = await this.rideRequestRepository.findOne({
+          rideId: (ride as any)._id,
+          riderId: (loc as any).riderId,
+        } as any);
+        if (existing) {
+          this.logger.warn(`⚠️ Duplicate request, skipping`);
+          continue;
+        } // ← naya log
+
+        await this.rideRequestRepository.create({
+          rideId: (ride as any)._id,
+          riderId: (loc as any).riderId,
+          status: RideRequestStatus.PENDING,
+        } as any);
 
         this.rideGateway.emitRideRequestToRider(riderId, {
           rideId: String((ride as any)._id),
@@ -85,12 +98,18 @@ export class RideMatchingService {
         });
 
         this.logger.log(`✅ ride_request emitted to rider_${riderId}`);
+
+        void this.rideNotificationService.notifyNewRideRequest(
+          riderId,
+          String((ride as any)._id),
+          ride.pickupAddress,
+          ride.totalAmount,
+        );
+
         return;
       }
 
-      this.logger.warn(
-        "⚠️ No eligible candidates found — no ride_request sent",
-      );
+      this.logger.warn("⚠️ No eligible candidates found");
     } catch (e) {
       this.logger.error("❌ Matching failed", e as any);
     }
