@@ -73,10 +73,8 @@ export class RideGateway implements OnGatewayConnection, OnGatewayDisconnect {
   }
 
   emitRideRequestToRider(riderId: string, payload: any) {
-    const room = `rider_${riderId}`;
-    const sockets = this.server.sockets.adapter.rooms.get(room);
-    this.logger.log(`Room ${room} has ${sockets?.size ?? 0} sockets`); // ← 0 = rider connect nahi
-    this.server.to(room).emit("ride_request", payload);
+    this.server.to(`rider_${riderId}`).emit("ride_request", payload);
+    this.logger.log(`📡 ride_request emitted to rider_${riderId}`);
   }
 
   emitRideStatusToUser(userId: string, payload: any) {
