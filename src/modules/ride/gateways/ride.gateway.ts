@@ -29,19 +29,26 @@ export class RideGateway implements OnGatewayConnection, OnGatewayDisconnect {
   async handleConnection(client: Socket) {
     try {
       let token = client.handshake.auth.token || client.handshake.headers.token;
+
+      this.logger.log(`🔑 Raw token: ${String(token).substring(0, 40)}`); // ← ADD
+
       if (!token) {
         client.disconnect();
         return;
       }
 
-      // "Bearer " prefix hatao agar hai
       if (token.startsWith("Bearer ")) {
         token = token.slice(7);
+        this.logger.log(`🔑 Token after Bearer strip done`); // ← ADD
       }
 
       const payload = await this.jwtService.verifyAsync(token, {
         secret: this.configService.get("jwt.secret"),
       });
+
+      this.logger.log(
+        `✅ Socket auth success: userId=${payload.sub} role=${payload.role}`,
+      ); // ← ADD
 
       const userId = payload.sub as string;
       const role = payload.role as UserRole;
