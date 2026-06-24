@@ -1,9 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { FilterQuery, Model, Types } from 'mongoose';
+import { AdminBookingStatusFilter, RevenueGraphPeriod } from 'src/common/constants/admin.constants';
+import { RidePaymentStatus, RideCancelledBy, RideStatus } from 'src/common/constants/ride.constants';
+import { buildAdminBookingStatusFilter } from 'src/common/utils/ride-display-status.util';
 import { BaseRepository } from './base.repository';
 import { Ride, RideDocument } from '../schemas/ride.schema';
-import { RideCancelledBy, RideStatus } from 'src/common/constants/ride.constants';
 
 export type DriverRatingStats = {
     averageRating: number;
@@ -259,5 +261,159 @@ export class RideRepository extends BaseRepository<RideDocument> {
                 populate: [{ path: 'userId', select: 'firstName lastName avatar' }],
             },
         );
+    }
+
+    async paginateAdmin(
+        page: number,
+        limit: number,
+        options?: {
+            search?: string;
+            status?: AdminBookingStatusFilter;
+            fromDate?: string;
+            toDate?: string;
+            userIds?: Types.ObjectId[];
+            driverIds?: Types.ObjectId[];
+        },
+    ) {
+        const conditions: FilterQuery<RideDocument> = {};
+
+        const statusFilter = buildAdminBookingStatusFilter(options?.status);
+        if (statusFilter) {
+            Object.assign(conditions, statusFilter);
+        }
+
+        if (options?.fromDate || options?.toDate) {
+            conditions.startTime = {};
+            if (options.fromDate) {
+                (conditions.startTime as any).$gte = new Date(options.fromDate);
+            }
+            if (options.toDate) {
+                const end = new Date(options.toDate);
+                end.setHours(23, 59, 59, 999);
+                (conditions.startTime as any).$lte = end;
+            }
+        }
+
+        const search = options?.search?.trim();
+        const or: FilterQuery<RideDocument>[] = [];
+        if (search) {
+            const rx = new RegExp(search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+            or.push({ pickupAddress: rx }, { dropAddress: rx }, { rideType: rx });
+            if (options?.userIds?.length) {
+                or.push({ userId: { $in: options.userIds } });
+            }
+            if (options?.driverIds?.length) {
+                or.push({ driverId: { $in: options.driverIds } });
+            }
+            if (Types.ObjectId.isValid(search)) {
+                or.push({ _id: new Types.ObjectId(search) });
+            }
+        }
+        if (or.length) {
+            conditions.$or = or;
+        }
+
+        return this.paginate(page, limit, conditions, {
+            sort: { createdAt: -1 },
+            populate: [
+                { path: 'userId', select: 'firstName lastName email avatar' },
+                { path: 'driverId', select: 'firstName lastName email phone countryCode avatar' },
+            ],
+        });
+    }
+
+    async countCompletedPaidRevenue(): Promise<number> {
+        const [row] = await this.model
+            .aggregate<{ total: number }>([
+                {
+                    $match: {
+                        status: RideStatus.COMPLETED,
+                        paymentStatus: RidePaymentStatus.PAID,
+                    },
+                },
+                { $group: { _id: null, total: { $sum: '$totalAmount' } } },
+            ])
+            .exec();
+        return row?.total ?? 0;
+    }
+
+    async countByStatus(status: RideStatus): Promise<number> {
+        return this.count({ status } as any);
+    }
+
+    async countAllBookings(): Promise<number> {
+        return this.count({});
+    }
+
+    async aggregateRevenueGraph(period: RevenueGraphPeriod) {
+        const now = new Date();
+        let start: Date;
+        let groupFormat: string;
+        let bucketCount: number;
+
+        switch (period) {
+            case RevenueGraphPeriod.SIX_MONTHS:
+                start = new Date(now.getFullYear(), now.getMonth() - 5, 1);
+                groupFormat = '%Y-%m';
+                bucketCount = 6;
+                break;
+            case RevenueGraphPeriod.YEARLY:
+                start = new Date(now.getFullYear() - 11, now.getMonth(), 1);
+                groupFormat = '%Y-%m';
+                bucketCount = 12;
+                break;
+            case RevenueGraphPeriod.MONTHLY:
+            default:
+                start = new Date(now.getFullYear(), now.getMonth() - 11, 1);
+                groupFormat = '%Y-%m';
+                bucketCount = 12;
+                break;
+        }
+
+        const rows = await this.model
+            .aggregate<{ _id: string; revenue: number; bookings: number }>([
+                {
+                    $match: {
+                        status: RideStatus.COMPLETED,
+                        paymentStatus: RidePaymentStatus.PAID,
+                        startTime: { $gte: start },
+                    },
+                },
+                {
+                    $group: {
+                        _id: { $dateToString: { format: groupFormat, date: '$startTime' } },
+                        revenue: { $sum: '$totalAmount' },
+                        bookings: { $sum: 1 },
+                    },
+                },
+                { $sort: { _id: 1 } },
+            ])
+            .exec();
+
+        const map = new Map(rows.map((r) => [r._id, r]));
+        const points: { label: string; period: string; revenue: number; bookings: number }[] = [];
+
+        for (let i = bucketCount - 1; i >= 0; i--) {
+            const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+            const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+            const row = map.get(key);
+            const label = d.toLocaleString('en-US', { month: 'short', year: '2-digit' });
+            points.push({
+                label,
+                period: key,
+                revenue: row?.revenue ?? 0,
+                bookings: row?.bookings ?? 0,
+            });
+        }
+
+        return points;
+    }
+
+    async countDriverCompletedTrips(driverId: string): Promise<number> {
+        if (!Types.ObjectId.isValid(driverId)) return 0;
+        return this.count({
+            driverId: new Types.ObjectId(driverId),
+            status: RideStatus.COMPLETED,
+        } as any);
     }
 }

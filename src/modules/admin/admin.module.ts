@@ -28,6 +28,16 @@ import { AdminContactUsService } from './services/admin-contact-us.service';
 import { AdminPromotionsController } from './controllers/admin-promotions.controller';
 import { AdminPromotionsService } from './services/admin-promotions.service';
 import { AdminNotificationsController } from './controllers/admin-notifications.controller';
+import { AdminDashboardController } from './controllers/admin-dashboard.controller';
+import { AdminBookingsController } from './controllers/admin-bookings.controller';
+import { AdminCommissionController } from './controllers/admin-commission.controller';
+import { AdminQueriesController } from './controllers/admin-queries.controller';
+import { AdminReportsController } from './controllers/admin-reports.controller';
+import { AdminDashboardService } from './services/admin-dashboard.service';
+import { AdminBookingsService } from './services/admin-bookings.service';
+import { AdminCommissionService } from './services/admin-commission.service';
+import { AdminQueriesService } from './services/admin-queries.service';
+import { AdminReportsService } from './services/admin-reports.service';
 
 @Module({
     imports: [
@@ -48,6 +58,11 @@ import { AdminNotificationsController } from './controllers/admin-notifications.
         AdminUsersService,
         AdminContactUsService,
         AdminPromotionsService,
+        AdminDashboardService,
+        AdminBookingsService,
+        AdminCommissionService,
+        AdminQueriesService,
+        AdminReportsService,
     ],
     controllers: [
         AdminAuthController,
@@ -63,6 +78,11 @@ import { AdminNotificationsController } from './controllers/admin-notifications.
         AdminContactUsController,
         AdminPromotionsController,
         AdminNotificationsController,
+        AdminDashboardController,
+        AdminBookingsController,
+        AdminCommissionController,
+        AdminQueriesController,
+        AdminReportsController,
     ],
 })
 export class AdminModule {}

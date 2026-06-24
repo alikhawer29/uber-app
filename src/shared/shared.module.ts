@@ -43,6 +43,10 @@ import { Wallet, WalletSchema } from './schemas/wallet.schema';
 import { WalletRepository } from './repositories/wallet.repository';
 import { WalletTransaction, WalletTransactionSchema } from './schemas/wallet-transaction.schema';
 import { WalletTransactionRepository } from './repositories/wallet-transaction.repository';
+import { CommissionRate, CommissionRateSchema } from './schemas/commission-rate.schema';
+import { CommissionRateRepository } from './repositories/commission-rate.repository';
+import { PayoutSetting, PayoutSettingSchema } from './schemas/payout-setting.schema';
+import { PayoutSettingRepository } from './repositories/payout-setting.repository';
 
 @Module({
     imports: [
@@ -67,6 +71,8 @@ import { WalletTransactionRepository } from './repositories/wallet-transaction.r
             { name: UserCard.name, schema: UserCardSchema },
             { name: Wallet.name, schema: WalletSchema },
             { name: WalletTransaction.name, schema: WalletTransactionSchema },
+            { name: CommissionRate.name, schema: CommissionRateSchema },
+            { name: PayoutSetting.name, schema: PayoutSettingSchema },
         ]),
     ],
     providers: [
@@ -90,6 +96,8 @@ import { WalletTransactionRepository } from './repositories/wallet-transaction.r
         UserCardRepository,
         WalletRepository,
         WalletTransactionRepository,
+        CommissionRateRepository,
+        PayoutSettingRepository,
     ],
     exports: [
         MongooseModule,
@@ -113,6 +121,8 @@ import { WalletTransactionRepository } from './repositories/wallet-transaction.r
         UserCardRepository,
         WalletRepository,
         WalletTransactionRepository,
+        CommissionRateRepository,
+        PayoutSettingRepository,
     ],
 })
 export class SharedModule { }

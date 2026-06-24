@@ -23,12 +23,26 @@ export class ContactUsSubmissionRepository extends BaseRepository<ContactUsSubmi
         options?: {
             search?: string;
             senderRole?: ContactUsSenderRole;
+            fromDate?: string;
+            toDate?: string;
         },
     ) {
         const conditions: FilterQuery<ContactUsSubmissionDocument> = {};
 
         if (options?.senderRole) {
             conditions.senderRole = options.senderRole;
+        }
+
+        if (options?.fromDate || options?.toDate) {
+            conditions.createdAt = {};
+            if (options.fromDate) {
+                (conditions.createdAt as any).$gte = new Date(options.fromDate);
+            }
+            if (options.toDate) {
+                const end = new Date(options.toDate);
+                end.setHours(23, 59, 59, 999);
+                (conditions.createdAt as any).$lte = end;
+            }
         }
 
         const search = options?.search?.trim();

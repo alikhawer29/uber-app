@@ -538,4 +538,59 @@ export class UserRepository extends BaseRepository<UserDocument> {
             ],
         });
     }
+
+    async countActiveByRole(role: UserRole): Promise<number> {
+        return this.count({
+            role,
+            deletedAt: null,
+            status: UserStatus.ACTIVE,
+        } as any);
+    }
+
+    async aggregateMonthlySignups(role: UserRole): Promise<{ label: string; period: string; count: number }[]> {
+        const now = new Date();
+        const start = new Date(now.getFullYear(), now.getMonth() - 11, 1);
+        const rows = await this.userModel
+            .aggregate<{ _id: string; count: number }>([
+                {
+                    $match: {
+                        role,
+                        deletedAt: null,
+                        createdAt: { $gte: start },
+                    },
+                },
+                {
+                    $group: {
+                        _id: { $dateToString: { format: '%Y-%m', date: '$createdAt' } },
+                        count: { $sum: 1 },
+                    },
+                },
+            ])
+            .exec();
+        const map = new Map(rows.map((r) => [r._id, r.count]));
+        const points: { label: string; period: string; count: number }[] = [];
+        for (let i = 11; i >= 0; i--) {
+            const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+            const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+            points.push({
+                label: d.toLocaleString('en-US', { month: 'short', year: '2-digit' }),
+                period: key,
+                count: map.get(key) ?? 0,
+            });
+        }
+        return points;
+    }
+
+    async searchIdsByNameOrEmail(search: string): Promise<Types.ObjectId[]> {
+        const trimmed = search?.trim();
+        if (!trimmed) return [];
+        const or = SearchUtils.buildUserSearchQuery(trimmed);
+        if (!or.length) return [];
+        const users = await this.userModel
+            .find({ deletedAt: null, $or: or })
+            .select('_id')
+            .limit(200)
+            .exec();
+        return users.map((u) => u._id as Types.ObjectId);
+    }
 }
