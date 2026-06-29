@@ -85,12 +85,19 @@ export class RiderRidesService {
         };
     }
 
-    async rejectRide(riderId: string, rideId: string, reason?: string) {
+    async rejectRide(riderId: string, rideId: string, reason: string) {
+        const trimmed = reason?.trim();
+        if (!trimmed || trimmed.length < 5) {
+            throw new BadRequestException({
+                code: 'REASON_REQUIRED',
+                message: 'A reason is required when rejecting a ride request',
+            });
+        }
         const req = await this.rideRequestRepository.findPendingForRider(rideId, riderId);
         if (!req) {
             throw new BadRequestException({ code: 'UNAUTHORIZED', message: 'This ride was not assigned to you' });
         }
-        await this.rideRequestRepository.setStatus(String((req as any)._id), RideRequestStatus.REJECTED, reason?.trim() || null);
+        await this.rideRequestRepository.setStatus(String((req as any)._id), RideRequestStatus.REJECTED, trimmed);
         return { success: true, message: 'Ride request declined' };
     }
 
@@ -219,7 +226,7 @@ export class RiderRidesService {
         return { success: true, data: { isOnline: loc.isOnline } };
     }
 
-    async cancelRide(riderId: string, rideId: string, reason: string) {
+    async cancelRide(riderId: string, rideId: string) {
         const ride = await this.rideRepository.findById(rideId);
         if (!ride || String((ride as any).driverId || '') !== riderId) {
             throw new BadRequestException({ code: 'UNAUTHORIZED', message: 'This ride was not assigned to you' });
@@ -230,7 +237,7 @@ export class RiderRidesService {
         await this.rideRepository.update(rideId, {
             status: RideStatus.CANCELLED,
             cancelledBy: RideCancelledBy.DRIVER,
-            cancelReason: reason.trim(),
+            cancelReason: null,
         } as any);
         this.rideGateway.emitRideStatusToUser(String((ride as any).userId), { rideId, status: RideStatus.CANCELLED });
         void this.rideNotificationService.notifyRideCancelledByDriver(

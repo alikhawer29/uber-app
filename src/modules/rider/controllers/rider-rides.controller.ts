@@ -4,7 +4,6 @@ import { CurrentUser } from 'src/common/decorators/current-user.decorator';
 import { Roles } from 'src/common/decorators/roles.decorator';
 import { UserRole } from 'src/common/constants/user.constants';
 import { RejectRideDto } from '../dto/reject-ride.dto';
-import { CancelRideRiderDto } from '../dto/cancel-ride-rider.dto';
 import { UpdateRiderLocationDto } from '../dto/update-rider-location.dto';
 import { EndRideDto } from '../dto/end-ride.dto';
 import { RiderAvailabilityDto } from '../dto/rider-availability.dto';
@@ -61,13 +60,9 @@ export class RiderRidesController {
     }
 
     @Post(':rideId/cancel')
-    @ApiOperation({ summary: 'Cancel ride (rider)' })
-    cancel(
-        @CurrentUser() rider: { id: string },
-        @Param('rideId') rideId: string,
-        @Body() dto: CancelRideRiderDto,
-    ) {
-        return this.riderRidesService.cancelRide(rider.id, rideId, dto.reason);
+    @ApiOperation({ summary: 'Cancel ride (rider) — no body required' })
+    cancel(@CurrentUser() rider: { id: string }, @Param('rideId') rideId: string) {
+        return this.riderRidesService.cancelRide(rider.id, rideId);
     }
 
     @Get('active')

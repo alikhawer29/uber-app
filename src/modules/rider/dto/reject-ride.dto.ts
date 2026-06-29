@@ -1,11 +1,12 @@
-import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsOptional, IsString, MaxLength } from 'class-validator';
+import { ApiProperty } from '@nestjs/swagger';
+import { IsNotEmpty, IsString, MaxLength, MinLength } from 'class-validator';
 
 export class RejectRideDto {
-    @ApiPropertyOptional({ maxLength: 200 })
-    @IsOptional()
+    @ApiProperty({ minLength: 5, maxLength: 200, example: 'Too far from pickup' })
     @IsString()
+    @IsNotEmpty()
+    @MinLength(5)
     @MaxLength(200)
-    reason?: string;
+    reason: string;
 }
 
