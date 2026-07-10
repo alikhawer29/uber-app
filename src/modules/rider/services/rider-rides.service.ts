@@ -1,6 +1,6 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { Types } from 'mongoose';
-import { RidePaymentStatus, RidePaymentType, RideStatus } from 'src/common/constants/ride.constants';
+import { RidePaymentStatus, RidePaymentType, RideStatus, RideCancelledBy } from 'src/common/constants/ride.constants';
 import { roundMoney } from 'src/common/utils/geo-pricing.utils';
 import { EndRideDto } from '../dto/end-ride.dto';
 import { RiderLocationRepository } from 'src/shared/repositories/rider-location.repository';
@@ -15,7 +15,9 @@ import { RideMessageSenderType } from 'src/shared/schemas/ride-message.schema';
 import { RideNotificationService } from 'src/modules/ride/services/ride-notification.service';
 import { UserRepository } from 'src/shared/repositories/user.repository';
 import { resolveRideDisplayStatus } from 'src/common/utils/ride-display-status.util';
-import { RideCancelledBy } from 'src/common/constants/ride.constants';
+import { RideComplaintRepository } from 'src/shared/repositories/ride-complaint.repository';
+import { RiderWalletService } from './rider-wallet.service';
+import { RideComplaintDto } from 'src/modules/user/dto/ride-complaint.dto';
 
 @Injectable()
 export class RiderRidesService {
@@ -29,9 +31,13 @@ export class RiderRidesService {
         private readonly ridePaymentCapture: RidePaymentCaptureService,
         private readonly rideNotificationService: RideNotificationService,
         private readonly userRepository: UserRepository,
+        private readonly rideComplaintRepository: RideComplaintRepository,
+        private readonly riderWalletService: RiderWalletService,
     ) { }
 
     async acceptRide(riderId: string, rideId: string) {
+        await this.riderWalletService.assertCanReceiveRides(riderId);
+
         const req = await this.rideRequestRepository.findPendingForRider(rideId, riderId);
         if (!req) {
             throw new BadRequestException({ code: 'UNAUTHORIZED', message: 'This ride was not assigned to you' });
@@ -215,6 +221,9 @@ export class RiderRidesService {
     }
 
     async setAvailability(riderId: string, isOnline: boolean) {
+        if (isOnline) {
+            await this.riderWalletService.assertCanReceiveRides(riderId);
+        }
         const loc = await this.riderLocationRepository.setIsOnline(riderId, isOnline);
         if (!loc) {
             throw new BadRequestException({
@@ -248,7 +257,39 @@ export class RiderRidesService {
         return { success: true, message: 'Ride cancelled' };
     }
 
+    async submitComplaint(riderId: string, rideId: string, dto: RideComplaintDto) {
+        const ride = await this.rideRepository.findById(rideId);
+        if (!ride || String((ride as any).driverId || '') !== riderId) {
+            throw new NotFoundException({ code: 'RIDE_NOT_FOUND', message: 'Ride not found' });
+        }
+
+        const exists = await this.rideComplaintRepository.existsForRideAndUser(rideId, riderId);
+        if (exists) {
+            throw new BadRequestException({
+                code: 'COMPLAINT_ALREADY_SUBMITTED',
+                message: 'A complaint was already submitted for this ride',
+            });
+        }
+
+        const created = await this.rideComplaintRepository.create({
+            rideId: new Types.ObjectId(rideId),
+            userId: new Types.ObjectId(riderId),
+            message: dto.message.trim(),
+        } as any);
+
+        void this.rideNotificationService.notifyRideComplaint(rideId, riderId);
+
+        return {
+            success: true,
+            message: 'Complaint submitted successfully',
+            data: { complaintId: String((created as any)._id) },
+        };
+    }
+
     async updateLocation(riderId: string, dto: { latitude: number; longitude: number; heading?: number; speed?: number; isOnline: boolean }) {
+        if (dto.isOnline) {
+            await this.riderWalletService.assertCanReceiveRides(riderId);
+        }
         await this.riderLocationRepository.upsertLocation({ riderId, ...dto });
         return { success: true };
     }

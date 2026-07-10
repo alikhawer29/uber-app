@@ -13,6 +13,7 @@ import { RiderContactController } from './controllers/rider-contact.controller';
 import { RiderLocationController, RiderRidesController } from './controllers/rider-rides.controller';
 import { RiderNotificationsController } from './controllers/rider-notifications.controller';
 import { RiderWalletController } from './controllers/rider-wallet.controller';
+import { RiderCardsController } from './controllers/rider-cards.controller';
 import { RiderRatingsController } from './controllers/rider-ratings.controller';
 import { RiderProfileController } from './controllers/rider-profile.controller';
 import { RiderAuthService } from './services/rider-auth.service';
@@ -40,6 +41,7 @@ import { RiderProfileService } from './services/rider-profile.service';
         RiderLocationController,
         RiderNotificationsController,
         RiderWalletController,
+        RiderCardsController,
         RiderRatingsController,
         RiderProfileController,
     ],

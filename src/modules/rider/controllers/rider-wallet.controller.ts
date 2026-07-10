@@ -1,8 +1,9 @@
-import { Controller, Get, Query } from '@nestjs/common';
+import { Body, Controller, Get, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from 'src/common/decorators/current-user.decorator';
 import { Roles } from 'src/common/decorators/roles.decorator';
 import { UserRole } from 'src/common/constants/user.constants';
+import { AddFundsDto } from 'src/modules/user/dto/add-funds.dto';
 import { RiderWalletService } from '../services/rider-wallet.service';
 
 @ApiTags('Rider — Wallet')
@@ -13,9 +14,18 @@ export class RiderWalletController {
     constructor(private readonly riderWalletService: RiderWalletService) {}
 
     @Get()
-    @ApiOperation({ summary: 'Wallet balance (earnings + top-ups)' })
+    @ApiOperation({ summary: 'Wallet balance (includes dues status)' })
     balance(@CurrentUser() rider: { id: string }) {
         return this.riderWalletService.getBalance(rider.id);
+    }
+
+    @Post('add-funds')
+    @ApiOperation({
+        summary: 'Add funds via card (clear dues or top up)',
+        description: 'Use a saved card from GET /rider/cards. Required when balance is negative to receive rides.',
+    })
+    addFunds(@CurrentUser() rider: { id: string }, @Body() dto: AddFundsDto) {
+        return this.riderWalletService.addFunds(rider.id, dto);
     }
 
     @Get('transactions')

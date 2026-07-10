@@ -9,6 +9,7 @@ import { EndRideDto } from '../dto/end-ride.dto';
 import { RiderAvailabilityDto } from '../dto/rider-availability.dto';
 import { RiderRidesService } from '../services/rider-rides.service';
 import { SendRideMessageDto } from 'src/modules/user/dto/send-ride-message.dto';
+import { RideComplaintDto } from 'src/modules/user/dto/ride-complaint.dto';
 
 @ApiTags('Rider — Rides')
 @ApiBearerAuth()
@@ -63,6 +64,16 @@ export class RiderRidesController {
     @ApiOperation({ summary: 'Cancel ride (rider) — no body required' })
     cancel(@CurrentUser() rider: { id: string }, @Param('rideId') rideId: string) {
         return this.riderRidesService.cancelRide(rider.id, rideId);
+    }
+
+    @Post(':rideId/complaint')
+    @ApiOperation({ summary: 'Submit a complaint about this ride (text only)' })
+    complaint(
+        @CurrentUser() rider: { id: string },
+        @Param('rideId') rideId: string,
+        @Body() dto: RideComplaintDto,
+    ) {
+        return this.riderRidesService.submitComplaint(rider.id, rideId, dto);
     }
 
     @Get('active')

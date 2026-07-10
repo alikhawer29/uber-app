@@ -61,6 +61,6 @@ import { UserDriverReviewsService } from './services/user-driver-reviews.service
         UserNotificationsController,
         UserDriverReviewsController,
     ],
-    exports: [UserAuthService, ContactUsService, UserService],
+    exports: [UserAuthService, ContactUsService, UserService, UserCardsService],
 })
 export class UserModule { }

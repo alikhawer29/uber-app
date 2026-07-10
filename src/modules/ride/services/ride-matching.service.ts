@@ -9,6 +9,8 @@ import { RideStatus } from "src/common/constants/ride.constants";
 import { RideGateway } from "../gateways/ride.gateway";
 import { UserRepository } from "src/shared/repositories/user.repository";
 import { UserRole, UserStatus } from "src/common/constants/user.constants";
+import { WalletRepository } from "src/shared/repositories/wallet.repository";
+import { roundMoney } from "src/common/utils/geo-pricing.utils";
 import { RideNotificationService } from "./ride-notification.service";
 
 @Injectable()
@@ -22,6 +24,7 @@ export class RideMatchingService {
     private readonly userRepository: UserRepository,
     private readonly rideGateway: RideGateway,
     private readonly rideNotificationService: RideNotificationService,
+    private readonly walletRepository: WalletRepository,
   ) {}
 
   @OnEvent(RideEvents.REQUEST_MATCHING)
@@ -70,7 +73,14 @@ export class RideMatchingService {
           continue;
         }
 
-        this.logger.log(`✅ Rider passed all checks`); // ← naya log
+        const wallet = await this.walletRepository.getOrCreate(riderId, "USD");
+        const balance = roundMoney((wallet as any)?.balance ?? 0);
+        if (balance < 0) {
+          this.logger.warn(`⚠️ Rider has wallet dues: ${balance}`);
+          continue;
+        }
+
+        this.logger.log(`✅ Rider passed all checks`);
 
         const existing = await this.rideRequestRepository.findOne({
           rideId: (ride as any)._id,
