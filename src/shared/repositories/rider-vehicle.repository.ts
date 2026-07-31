@@ -38,6 +38,23 @@ export class RiderVehicleRepository extends BaseRepository<RiderVehicleDocument>
             .exec();
     }
 
+    /** Approved vehicle for a rider that matches the requested ride vehicle type. */
+    async findApprovedByUserIdAndVehicleType(
+        userId: string,
+        vehicleTypeId: string,
+    ): Promise<RiderVehicleDocument | null> {
+        if (!Types.ObjectId.isValid(userId) || !Types.ObjectId.isValid(vehicleTypeId)) return null;
+        return this.model
+            .findOne({
+                userId: new Types.ObjectId(userId),
+                vehicleTypeId: new Types.ObjectId(vehicleTypeId),
+                approvalStatus: RiderVehicleApprovalStatus.APPROVED,
+            })
+            .sort({ createdAt: -1 })
+            .populate('vehicleTypeId', 'name facilities image')
+            .exec();
+    }
+
     async paginateByApprovalStatus(
         page: number,
         limit: number,

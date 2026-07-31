@@ -29,6 +29,7 @@ export function resolveRideDisplayStatus(
     }
     switch (cancelledBy) {
         case RideCancelledBy.USER:
+        case 'customer':
             return 'customer_cancelled';
         case RideCancelledBy.DRIVER:
             return 'rider_cancelled';
@@ -46,7 +47,7 @@ export function resolveRideDisplayStatusLabel(displayStatus: RideDisplayStatus):
         case 'customer_cancelled':
             return 'Cancelled By User';
         case 'rider_cancelled':
-            return 'Cancelled By Driver';
+            return 'Cancelled By Rider';
         case 'admin_cancelled':
             return 'Cancelled By Admin';
         case RideStatus.CANCELLED:
@@ -57,6 +58,34 @@ export function resolveRideDisplayStatusLabel(displayStatus: RideDisplayStatus):
             }
             return String(displayStatus);
     }
+}
+
+/**
+ * Client-facing cancelledBy for apps (DB still stores `user` for passenger).
+ * Driver app expects `customer` when the passenger cancelled.
+ */
+export function toClientCancelledBy(cancelledBy?: string | null): string | null {
+    if (!cancelledBy) return null;
+    if (cancelledBy === RideCancelledBy.USER || cancelledBy === 'customer') {
+        return 'customer';
+    }
+    return cancelledBy;
+}
+
+/** Shared cancel / ride_status_updated payload for socket, push, and cancel API. */
+export function buildRideCancelStatusPayload(params: {
+    rideId: string;
+    cancelledBy: RideCancelledBy | string;
+}) {
+    const displayStatus = resolveRideDisplayStatus(RideStatus.CANCELLED, params.cancelledBy);
+    return {
+        rideId: params.rideId,
+        status: RideStatus.CANCELLED,
+        cancelledBy: toClientCancelledBy(params.cancelledBy) as string,
+        displayStatus,
+        displayStatusLabel: resolveRideDisplayStatusLabel(displayStatus),
+        eventType: 'ride_status_updated' as const,
+    };
 }
 
 export function formatTripId(rideId: string): string {

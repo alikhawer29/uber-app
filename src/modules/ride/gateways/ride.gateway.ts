@@ -81,6 +81,22 @@ export class RideGateway implements OnGatewayConnection, OnGatewayDisconnect {
     this.server.to(`user_${userId}`).emit("ride_status_updated", payload);
   }
 
+  emitRideStatusToRider(riderId: string, payload: any) {
+    this.server.to(`rider_${riderId}`).emit("ride_status_updated", payload);
+  }
+
+  /** Notify both passenger (`user_*`) and rider (`rider_*`) rooms. */
+  emitRideStatusToParties(
+    userId: string,
+    riderId: string | null | undefined,
+    payload: any,
+  ) {
+    this.emitRideStatusToUser(userId, payload);
+    if (riderId) {
+      this.emitRideStatusToRider(riderId, payload);
+    }
+  }
+
   emitRiderLocationToUser(userId: string, payload: any) {
     this.server.to(`user_${userId}`).emit("rider_location_updated", payload);
   }

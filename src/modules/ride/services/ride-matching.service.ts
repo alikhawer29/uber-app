@@ -1,9 +1,11 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { OnEvent } from "@nestjs/event-emitter";
+import { Types } from "mongoose";
 import { RideEvents } from "src/modules/user/events/ride.events";
 import { RiderLocationRepository } from "src/shared/repositories/rider-location.repository";
 import { RideRepository } from "src/shared/repositories/ride.repository";
 import { RideRequestRepository } from "src/shared/repositories/ride-request.repository";
+import { RiderVehicleRepository } from "src/shared/repositories/rider-vehicle.repository";
 import { RideRequestStatus } from "src/shared/schemas/ride-request.schema";
 import { RideStatus } from "src/common/constants/ride.constants";
 import { RideGateway } from "../gateways/ride.gateway";
@@ -21,6 +23,7 @@ export class RideMatchingService {
     private readonly rideRepository: RideRepository,
     private readonly riderLocationRepository: RiderLocationRepository,
     private readonly rideRequestRepository: RideRequestRepository,
+    private readonly riderVehicleRepository: RiderVehicleRepository,
     private readonly userRepository: UserRepository,
     private readonly rideGateway: RideGateway,
     private readonly rideNotificationService: RideNotificationService,
@@ -42,8 +45,14 @@ export class RideMatchingService {
         return;
       }
 
+      const rideVehicleTypeId = this.extractId((ride as any).vehicleTypeId);
+      if (!rideVehicleTypeId) {
+        this.logger.error("❌ Ride has no vehicleTypeId — cannot match by vehicle type");
+        return;
+      }
+
       this.logger.log(
-        `📍 Pickup: lat=${ride.pickupLat}, lng=${ride.pickupLng}`,
+        `📍 Pickup: lat=${ride.pickupLat}, lng=${ride.pickupLng}, vehicleTypeId=${rideVehicleTypeId}`,
       );
 
       const candidates =
@@ -73,6 +82,18 @@ export class RideMatchingService {
           continue;
         }
 
+        const matchingVehicle =
+          await this.riderVehicleRepository.findApprovedByUserIdAndVehicleType(
+            riderId,
+            rideVehicleTypeId,
+          );
+        if (!matchingVehicle) {
+          this.logger.warn(
+            `⚠️ Vehicle type mismatch — need ${rideVehicleTypeId} for rider ${riderId}`,
+          );
+          continue;
+        }
+
         const wallet = await this.walletRepository.getOrCreate(riderId, "USD");
         const balance = roundMoney((wallet as any)?.balance ?? 0);
         if (balance < 0) {
@@ -80,7 +101,7 @@ export class RideMatchingService {
           continue;
         }
 
-        this.logger.log(`✅ Rider passed all checks`);
+        this.logger.log(`✅ Rider passed all checks (vehicleType matched)`);
 
         const existing = await this.rideRequestRepository.findOne({
           rideId: (ride as any)._id,
@@ -89,7 +110,7 @@ export class RideMatchingService {
         if (existing) {
           this.logger.warn(`⚠️ Duplicate request, skipping`);
           continue;
-        } // ← naya log
+        }
 
         await this.rideRequestRepository.create({
           rideId: (ride as any)._id,
@@ -104,6 +125,7 @@ export class RideMatchingService {
           dropOffAddress: ride.dropAddress,
           fare: ride.totalAmount,
           distance: ride.distanceKm,
+          vehicleTypeId: rideVehicleTypeId,
           timeout: 30,
         });
 
@@ -123,5 +145,18 @@ export class RideMatchingService {
     } catch (e) {
       this.logger.error("❌ Matching failed", e as any);
     }
+  }
+
+  private extractId(value: unknown): string | null {
+    if (!value) return null;
+    if (typeof value === "string") {
+      return Types.ObjectId.isValid(value) ? value : null;
+    }
+    if (typeof value === "object" && value !== null) {
+      const id = (value as { _id?: unknown; id?: unknown })._id ?? (value as { id?: unknown }).id;
+      if (id) return this.extractId(id);
+    }
+    const asString = String(value);
+    return Types.ObjectId.isValid(asString) ? asString : null;
   }
 }

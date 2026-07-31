@@ -14,7 +14,12 @@ import { RideMessageRepository } from 'src/shared/repositories/ride-message.repo
 import { RideMessageSenderType } from 'src/shared/schemas/ride-message.schema';
 import { RideNotificationService } from 'src/modules/ride/services/ride-notification.service';
 import { UserRepository } from 'src/shared/repositories/user.repository';
-import { resolveRideDisplayStatus } from 'src/common/utils/ride-display-status.util';
+import {
+    buildRideCancelStatusPayload,
+    resolveRideDisplayStatus,
+    resolveRideDisplayStatusLabel,
+    toClientCancelledBy,
+} from 'src/common/utils/ride-display-status.util';
 import { RideComplaintRepository } from 'src/shared/repositories/ride-complaint.repository';
 import { RiderWalletService } from './rider-wallet.service';
 import { RideComplaintDto } from 'src/modules/user/dto/ride-complaint.dto';
@@ -48,7 +53,17 @@ export class RiderRidesService {
             throw new BadRequestException({ code: 'RIDE_NO_LONGER_AVAILABLE', message: 'Ride was cancelled or assigned to another rider' });
         }
 
-        const riderVehicle = await this.riderVehicleRepository.findLatestApprovedByUserIdWithVehicleType(riderId);
+        const rideVehicleTypeId = this.extractId((ride as any).vehicleTypeId);
+        const riderVehicle = rideVehicleTypeId
+            ? await this.riderVehicleRepository.findApprovedByUserIdAndVehicleType(riderId, rideVehicleTypeId)
+            : await this.riderVehicleRepository.findLatestApprovedByUserIdWithVehicleType(riderId);
+
+        if (rideVehicleTypeId && !riderVehicle) {
+            throw new BadRequestException({
+                code: 'VEHICLE_TYPE_MISMATCH',
+                message: 'Your approved vehicle does not match the requested ride type',
+            });
+        }
 
         // Mark accepted
         await this.rideRequestRepository.setStatus(String((req as any)._id), RideRequestStatus.ACCEPTED);
@@ -248,13 +263,32 @@ export class RiderRidesService {
             cancelledBy: RideCancelledBy.DRIVER,
             cancelReason: null,
         } as any);
-        this.rideGateway.emitRideStatusToUser(String((ride as any).userId), { rideId, status: RideStatus.CANCELLED });
-        void this.rideNotificationService.notifyRideCancelledByDriver(
-            String((ride as any).userId),
-            riderId,
+
+        const updated = (await this.rideRepository.findById(rideId)) || ride;
+        const enrichedRide = await this.enrichRideForRiderResponse({
+            ...(typeof (updated as any)?.toObject === 'function' ? (updated as any).toObject() : { ...(updated as any) }),
+            status: RideStatus.CANCELLED,
+            cancelledBy: RideCancelledBy.DRIVER,
+            cancelReason: null,
+        });
+
+        const statusPayload = buildRideCancelStatusPayload({
             rideId,
-        );
-        return { success: true, message: 'Ride cancelled' };
+            cancelledBy: RideCancelledBy.DRIVER,
+        });
+
+        const userId = String((ride as any).userId);
+        this.rideGateway.emitRideStatusToParties(userId, riderId, statusPayload);
+        void this.rideNotificationService.notifyRideCancelledByDriver(userId, riderId, rideId);
+
+        return {
+            success: true,
+            message: 'Ride cancelled',
+            data: {
+                ...statusPayload,
+                ride: enrichedRide,
+            },
+        };
     }
 
     async submitComplaint(riderId: string, rideId: string, dto: RideComplaintDto) {
@@ -299,7 +333,9 @@ export class RiderRidesService {
             driverId: new Types.ObjectId(riderId),
             status: { $in: [RideStatus.ACCEPTED, RideStatus.ARRIVED, RideStatus.IN_PROGRESS] },
         } as any);
-        if (!ride) throw new NotFoundException({ code: 'NO_ACTIVE_RIDE', message: 'No active ride found for this rider' });
+        if (!ride) {
+            return { success: true, data: null };
+        }
         const enrichedRide = await this.enrichRideForRiderResponse(ride);
         return {
             success: true,
@@ -352,10 +388,13 @@ export class RiderRidesService {
                   : Promise.resolve(null),
         ]);
 
+        const displayStatus = resolveRideDisplayStatus(rideData.status, rideData.cancelledBy);
         return {
             ...rideData,
             rideId: String(rideData._id ?? rideData.id),
-            displayStatus: resolveRideDisplayStatus(rideData.status, rideData.cancelledBy),
+            cancelledBy: toClientCancelledBy(rideData.cancelledBy),
+            displayStatus,
+            displayStatusLabel: resolveRideDisplayStatusLabel(displayStatus),
             userId: passengerId,
             driverId,
             vehicleId: vehicleId ?? this.extractId(vehicle?._id) ?? null,
@@ -429,9 +468,12 @@ export class RiderRidesService {
         const result = await this.rideRepository.paginate(page, limit, conditions, { sort: { createdAt: -1 } });
         const rides = result.data.map((r: any) => {
             const plain = typeof r?.toObject === 'function' ? r.toObject() : { ...r };
+            const displayStatus = resolveRideDisplayStatus(plain.status, plain.cancelledBy);
             return {
                 ...plain,
-                displayStatus: resolveRideDisplayStatus(plain.status, plain.cancelledBy),
+                cancelledBy: toClientCancelledBy(plain.cancelledBy),
+                displayStatus,
+                displayStatusLabel: resolveRideDisplayStatusLabel(displayStatus),
             };
         });
         return {

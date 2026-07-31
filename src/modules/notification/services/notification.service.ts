@@ -30,8 +30,19 @@ export class NotificationService {
         const out: Record<string, string> = {
             notificationId,
             type,
+            notificationType: type,
         };
         if (extra && typeof extra === 'object') {
+            for (const [key, value] of Object.entries(extra)) {
+                if (value === null || value === undefined) continue;
+                if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+                    out[key] = String(value);
+                }
+            }
+            // Prefer socket-aligned event type so apps can clear active ride offline.
+            if (typeof extra.eventType === 'string' && extra.eventType.trim()) {
+                out.type = String(extra.eventType);
+            }
             try {
                 out.payload = JSON.stringify(extra);
             } catch {

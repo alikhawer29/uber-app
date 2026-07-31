@@ -1,7 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { NotificationService } from 'src/modules/notification/services/notification.service';
 import { NotificationType } from 'src/shared/schemas/notification.schema';
-import { RideStatus } from 'src/common/constants/ride.constants';
+import { RideCancelledBy, RideStatus } from 'src/common/constants/ride.constants';
+import { buildRideCancelStatusPayload } from 'src/common/utils/ride-display-status.util';
 
 @Injectable()
 export class RideNotificationService {
@@ -87,12 +88,16 @@ export class RideNotificationService {
     }
 
     notifyRideCancelledByUser(userId: string, driverId: string | null, rideId: string) {
+        const cancelData = buildRideCancelStatusPayload({
+            rideId,
+            cancelledBy: RideCancelledBy.USER,
+        });
         void this.notificationService.notifyUserNonBlocking({
             recipientId: userId,
             title: 'Ride cancelled',
             message: 'You cancelled this ride.',
             type: NotificationType.RIDE_CANCELLED,
-            data: { rideId, status: RideStatus.CANCELLED, cancelledBy: 'user' },
+            data: cancelData,
         });
         if (driverId) {
             void this.notificationService.notifyUserNonBlocking({
@@ -100,25 +105,29 @@ export class RideNotificationService {
                 title: 'Ride cancelled by customer',
                 message: 'The passenger cancelled this ride.',
                 type: NotificationType.RIDE_CANCELLED,
-                data: { rideId, status: RideStatus.CANCELLED, cancelledBy: 'user' },
+                data: cancelData,
             });
         }
     }
 
     notifyRideCancelledByDriver(userId: string, riderId: string, rideId: string) {
+        const cancelData = buildRideCancelStatusPayload({
+            rideId,
+            cancelledBy: RideCancelledBy.DRIVER,
+        });
         void this.notificationService.notifyUserNonBlocking({
             recipientId: userId,
             title: 'Ride cancelled by driver',
             message: 'Your driver cancelled this ride.',
             type: NotificationType.RIDE_CANCELLED,
-            data: { rideId, status: RideStatus.CANCELLED, cancelledBy: 'driver' },
+            data: cancelData,
         });
         void this.notificationService.notifyUserNonBlocking({
             recipientId: riderId,
             title: 'Ride cancelled',
             message: 'You cancelled this ride.',
             type: NotificationType.RIDE_CANCELLED,
-            data: { rideId, status: RideStatus.CANCELLED, cancelledBy: 'driver' },
+            data: cancelData,
         });
     }
 

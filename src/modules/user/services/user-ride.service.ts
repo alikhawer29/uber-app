@@ -37,7 +37,13 @@ import { RideComplaintRepository } from 'src/shared/repositories/ride-complaint.
 import { RideComplaintDto } from '../dto/ride-complaint.dto';
 import { resolveScheduledAtFromPayload } from '../utils/resolve-scheduled-at.util';
 import { RideNotificationService } from 'src/modules/ride/services/ride-notification.service';
-import { resolveRideDisplayStatus } from 'src/common/utils/ride-display-status.util';
+import { RideGateway } from 'src/modules/ride/gateways/ride.gateway';
+import {
+    buildRideCancelStatusPayload,
+    resolveRideDisplayStatus,
+    resolveRideDisplayStatusLabel,
+    toClientCancelledBy,
+} from 'src/common/utils/ride-display-status.util';
 import { RideCancelledBy } from 'src/common/constants/ride.constants';
 import { buildDriverRatingSummary } from 'src/common/utils/driver-rating-display.util';
 import { DriverRatingStats } from 'src/shared/repositories/ride.repository';
@@ -60,6 +66,7 @@ export class UserRideService {
         private readonly eventEmitter: EventEmitter2,
         private readonly rideComplaintRepository: RideComplaintRepository,
         private readonly rideNotificationService: RideNotificationService,
+        private readonly rideGateway: RideGateway,
     ) {}
 
     async quote(query: RideQuoteQueryDto) {
@@ -557,12 +564,19 @@ export class UserRideService {
         } as any);
 
         const driverId = this.extractId((ride as any).driverId);
+        const statusPayload = buildRideCancelStatusPayload({
+            rideId: rideObjectId,
+            cancelledBy: RideCancelledBy.USER,
+        });
+        this.rideGateway.emitRideStatusToParties(userId, driverId, statusPayload);
+
         void this.rideNotificationService.notifyRideCancelledByUser(userId, driverId, rideObjectId);
 
         return {
             success: true,
             message: 'Ride cancelled successfully',
             data: {
+                ...statusPayload,
                 cancellationFeeApplied,
                 cancellationFee,
                 walletDeducted: cancellationFeeApplied ? cancellationFee : 0,
@@ -640,10 +654,13 @@ export class UserRideService {
                     ? { ...relations.driver, ratings: driverRatings }
                     : null;
 
+                const displayStatus = resolveRideDisplayStatus(r.status, (r as any).cancelledBy);
                 return {
                     rideId: String((r as any)._id),
                     status: r.status,
-                    displayStatus: resolveRideDisplayStatus(r.status, (r as any).cancelledBy),
+                    cancelledBy: toClientCancelledBy((r as any).cancelledBy),
+                    displayStatus,
+                    displayStatusLabel: resolveRideDisplayStatusLabel(displayStatus),
                     riderName: relations.riderName,
                     driverId,
                     driver,
@@ -688,9 +705,12 @@ export class UserRideService {
             }
         }
 
+        const displayStatus = resolveRideDisplayStatus(rideData.status, rideData.cancelledBy);
         return {
             ...rideData,
-            displayStatus: resolveRideDisplayStatus(rideData.status, rideData.cancelledBy),
+            cancelledBy: toClientCancelledBy(rideData.cancelledBy),
+            displayStatus,
+            displayStatusLabel: resolveRideDisplayStatusLabel(displayStatus),
             driverId,
             vehicleId: this.extractId(rideData.vehicleId) ?? relations.vehicle?.vehicleId ?? null,
             vehicleTypeId: this.extractId(rideData.vehicleTypeId),
