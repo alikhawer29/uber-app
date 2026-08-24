@@ -4,12 +4,12 @@ import { AdminListQueryDto } from './list-query.dto';
 
 export class DriverRegistrationListQueryDto extends AdminListQueryDto {
     @ApiPropertyOptional({
-        enum: ['all', 'pending', 'rejected', 'approved'],
+        enum: ['all', 'pending', 'rejected'],
         default: 'all',
         description:
-            'pending = awaiting review, rejected = application rejected, approved = registration accepted (active or inactive driver)',
+            'all = pending + rejected (default). pending = awaiting review. rejected = application declined. Approved drivers are not in this queue.',
     })
     @IsOptional()
-    @IsIn(['all', 'pending', 'rejected', 'approved'])
-    status?: 'all' | 'pending' | 'rejected' | 'approved';
+    @IsIn(['all', 'pending', 'rejected'])
+    status?: 'all' | 'pending' | 'rejected';
 }

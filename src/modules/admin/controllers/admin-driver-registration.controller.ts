@@ -16,7 +16,7 @@ export class AdminDriverRegistrationController {
     @ApiOperation({
         summary: 'List driver (rider) registration requests',
         description:
-            'Paginated riders with registration lifecycle: pending, rejected, or approved (active/inactive). Each row includes `registrationStatus` for UI (pending / rejected / approved). Use `admin/pending-riders` approve/reject actions for pending applications.',
+            'Pending and rejected applications. Approved drivers leave this queue and appear under admin drivers. Optional `status`: all (default), pending, rejected. Each row includes `registrationStatus`.',
     })
     async list(@Query() query: DriverRegistrationListQueryDto) {
         return this.adminDriverRegistrationService.listRegistrationRequests(query);
@@ -26,7 +26,7 @@ export class AdminDriverRegistrationController {
     @ApiOperation({
         summary: 'View a single driver registration request',
         description:
-            'Driver profile, linked vehicle (with vehicle type), image URL arrays on vehicle, placeholder `stats` and empty `rideHistory` until bookings are implemented.',
+            'Pending or rejected application. Approved drivers return 404 here (use admin drivers). Includes driver, vehicle, placeholder `stats`, and empty `rideHistory`.',
     })
     async getOne(@Param('userId') userId: string) {
         return this.adminDriverRegistrationService.getRegistrationRequestDetail(userId);

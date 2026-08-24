@@ -6,12 +6,7 @@ import { UserStatus } from 'src/common/constants/user.constants';
 import { DriverRegistrationListQueryDto } from '../dto/driver-registration-list-query.dto';
 import { sanitizeUserUtils } from 'src/common/utils/sanitize-user-utils';
 
-const REGISTRATION_USER_STATUSES: UserStatus[] = [
-    UserStatus.PENDING_APPROVAL,
-    UserStatus.REJECTED,
-    UserStatus.ACTIVE,
-    UserStatus.INACTIVE,
-];
+const REQUEST_QUEUE_STATUSES: UserStatus[] = [UserStatus.PENDING_APPROVAL, UserStatus.REJECTED];
 
 @Injectable()
 export class AdminDriverRegistrationService {
@@ -50,7 +45,7 @@ export class AdminDriverRegistrationService {
         if (String(user.role) !== UserRole.RIDER) {
             throw new NotFoundException('Registration request not found');
         }
-        if (!REGISTRATION_USER_STATUSES.includes(user.status as UserStatus)) {
+        if (!REQUEST_QUEUE_STATUSES.includes(user.status as UserStatus)) {
             throw new NotFoundException('Registration request not found');
         }
         const vehicle = await this.riderVehicleRepository.findLatestByUserIdWithVehicleType(userId);
@@ -73,14 +68,10 @@ export class AdminDriverRegistrationService {
         };
     }
 
-    /** UI labels: pending (orange), rejected (red), approved (green). */
-    private mapRegistrationStatus(status: string): 'pending' | 'rejected' | 'approved' {
-        if (status === UserStatus.PENDING_APPROVAL) {
-            return 'pending';
-        }
+    private mapRegistrationStatus(status: string): 'pending' | 'rejected' {
         if (status === UserStatus.REJECTED) {
             return 'rejected';
         }
-        return 'approved';
+        return 'pending';
     }
 }

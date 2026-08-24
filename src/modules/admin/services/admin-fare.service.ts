@@ -80,23 +80,40 @@ export class AdminFareService {
     }
 
     async update(id: string, dto: UpdateFareDto) {
-        const doc = await this.fareRepository.findById(id);
+        const doc = await this.resolveFareForUpdate(id, dto.vehicleTypeId);
         if (!doc) {
             throw new NotFoundException('Fare not found');
         }
+        const fareId = String(doc._id);
         const payload: Record<string, number> = {};
         if (dto.baseFare !== undefined) payload.baseFare = dto.baseFare;
         if (dto.costPerKm !== undefined) payload.costPerKm = dto.costPerKm;
         if (dto.waitingFeePerMin !== undefined) payload.waitingFeePerMin = dto.waitingFeePerMin;
         if (dto.minimumFare !== undefined) payload.minimumFare = dto.minimumFare;
         if (Object.keys(payload).length === 0) {
-            return this.fareRepository.findByIdWithVehicleType(id);
+            return this.fareRepository.findByIdWithVehicleType(fareId);
         }
-        const updated = await this.fareRepository.update(id, payload as any);
+        const updated = await this.fareRepository.update(fareId, payload as any);
         if (!updated) {
             throw new NotFoundException('Fare not found');
         }
-        return this.fareRepository.findByIdWithVehicleType(id);
+        return this.fareRepository.findByIdWithVehicleType(fareId);
+    }
+
+    /** Path may be fare `_id` or vehicle type id; form may also send `vehicleTypeId`. */
+    private async resolveFareForUpdate(id: string, vehicleTypeId?: string) {
+        const byFareId = await this.fareRepository.findById(id);
+        if (byFareId) {
+            return byFareId;
+        }
+        const byPathVehicleType = await this.fareRepository.findByVehicleTypeId(id);
+        if (byPathVehicleType) {
+            return byPathVehicleType;
+        }
+        if (vehicleTypeId) {
+            return this.fareRepository.findByVehicleTypeId(vehicleTypeId);
+        }
+        return null;
     }
 
     async remove(id: string) {

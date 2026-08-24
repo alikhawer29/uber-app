@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseInterceptors } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Put, Query, UseInterceptors } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { MultipartFormFieldsInterceptor } from 'src/common/interceptors/multipart-form-fields.interceptor';
 import { Roles } from 'src/common/decorators/roles.decorator';
@@ -42,7 +42,13 @@ export class AdminFareController {
 
     @Patch(':id')
     @ApiOperation({ summary: 'Update fare' })
-    async update(@Param('id') id: string, @Body() dto: UpdateFareDto) {
+    async updatePatch(@Param('id') id: string, @Body() dto: UpdateFareDto) {
+        return this.adminFareService.update(id, dto);
+    }
+
+    @Put(':id')
+    @ApiOperation({ summary: 'Update fare (same as PATCH; used by admin UI)' })
+    async updatePut(@Param('id') id: string, @Body() dto: UpdateFareDto) {
         return this.adminFareService.update(id, dto);
     }
 

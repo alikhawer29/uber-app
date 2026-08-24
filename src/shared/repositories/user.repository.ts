@@ -439,12 +439,12 @@ export class UserRepository extends BaseRepository<UserDocument> {
         });
     }
 
-    /** Rider driver registration queue: pending, rejected, or approved (active/inactive). Excludes suspended. */
+    /** Rider registration queue: pending and rejected only. Approved drivers live on the drivers list. */
     async paginateRiderRegistrationRequests(
         page: number,
         limit: number,
-        search: string | undefined,
-        tab: 'all' | 'pending' | 'rejected' | 'approved',
+        search?: string,
+        tab: 'all' | 'pending' | 'rejected' = 'all',
     ): Promise<{
         data: UserDocument[];
         total: number;
@@ -454,21 +454,13 @@ export class UserRepository extends BaseRepository<UserDocument> {
         hasNext: boolean;
         hasPrev: boolean;
     }> {
-        const baseStatuses = [
-            UserStatus.PENDING_APPROVAL,
-            UserStatus.REJECTED,
-            UserStatus.ACTIVE,
-            UserStatus.INACTIVE,
-        ];
         let statusFilter: FilterQuery<UserDocument>['status'];
         if (tab === 'pending') {
             statusFilter = UserStatus.PENDING_APPROVAL;
         } else if (tab === 'rejected') {
             statusFilter = UserStatus.REJECTED;
-        } else if (tab === 'approved') {
-            statusFilter = { $in: [UserStatus.ACTIVE, UserStatus.INACTIVE] };
         } else {
-            statusFilter = { $in: baseStatuses };
+            statusFilter = { $in: [UserStatus.PENDING_APPROVAL, UserStatus.REJECTED] };
         }
         const conditions: FilterQuery<UserDocument> = {
             role: UserRole.RIDER,
